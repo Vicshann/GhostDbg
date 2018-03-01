@@ -1,0 +1,30 @@
+//------------------------------------------------------------------------------------
+ NtSetInformationObject          // GetHandleInformation?
+ NtSetInformationVirtualMemory
+ NtSetInformationProcess
+ NtSetInformationThread
+ NtWaitForAlertByThreadId
+ RtlCaptureContext
+ NtSetInformationProcess 
+ NtQueryObject 
+ NtContinue (x86)   / RtlRestoreContext (x64)
+
+ KiRaiseUserExceptionDispatcher
+
+
+ ETHREAD -> StartAddress ?
+
+ https://www.codeproject.com/Articles/543542/Windows-x-system-service-hooks-and-advanced-debu
+
+					 
+TODO: 
+ Unload inject DLL if it was loaded by a debugger and it is going to detach 
+ Intercept Any exception (Optional)
+ Start target as Explorer.exe
+ Hardware BP only for an active thread (Last for GetThreadContext?)
+ Inject into child processes
+ Block constant Thread Suspend/Resume calls except for BP setting
+ Kernel exception dispatcer hook(No hook of KiUserExceptionDispatcher and NtContinue)
+
+
+//-----------------------------------------------------------------------------------------------------------------
