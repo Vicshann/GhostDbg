@@ -74,13 +74,13 @@
   <PropertyGroup>
     <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(XDBGNI_TESTFLDR)</OutDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(SolutionDir)BUILD\$(ProjectName)\$(Configuration)$(Platform)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(SolutionDir)BUILD\$(ProjectName)\$(Configuration)$(PlatformArchitecture)\</IntDir>
     <IgnoreImportLibrary Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</IgnoreImportLibrary>
     <IgnoreImportLibrary Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</IgnoreImportLibrary>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkIncremental>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(XDBGNI_TESTFLDR)</OutDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)BUILD\$(ProjectName)\$(Configuration)$(Platform)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)BUILD\$(ProjectName)\$(Configuration)$(PlatformArchitecture)\</IntDir>
     <IgnoreImportLibrary Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</IgnoreImportLibrary>
     <IgnoreImportLibrary Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</IgnoreImportLibrary>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
@@ -94,7 +94,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <TargetName>injlib</TargetName>
     <OutDir>$(XDBGNI_TESTFLDR)</OutDir>
-    <IntDir>$(SolutionDir)BUILD\$(ProjectName)\$(Configuration)$(Platform)\</IntDir>
+    <IntDir>$(SolutionDir)BUILD\$(ProjectName)\$(Configuration)$(PlatformArchitecture)\</IntDir>
     <TargetExt>.dll</TargetExt>
     <EmbedManifest>false</EmbedManifest>
   </PropertyGroup>
@@ -106,7 +106,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <TargetName>injlib</TargetName>
     <OutDir>$(XDBGNI_TESTFLDR)</OutDir>
-    <IntDir>$(SolutionDir)BUILD\$(ProjectName)\$(Configuration)$(Platform)\</IntDir>
+    <IntDir>$(SolutionDir)BUILD\$(ProjectName)\$(Configuration)$(PlatformArchitecture)\</IntDir>
     <TargetExt>.dll</TargetExt>
     <EmbedManifest>false</EmbedManifest>
   </PropertyGroup>
@@ -280,6 +280,10 @@
       <IgnoreSpecificDefaultLibraries>threadsafestatics.lib</IgnoreSpecificDefaultLibraries>
       <AdditionalOptions>/nocoffgrpinfo %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <PostBuildEvent>
+      <Command>mkdir "$(SolutionDir)BUILD\RELEASE\$(SolutionName)\x$(PlatformArchitecture)"
+copy /Y "$(OutDir)$(TargetName)$(TargetExt)" "$(SolutionDir)BUILD\RELEASE\$(SolutionName)\x$(PlatformArchitecture)\$(TargetName)$(TargetExt)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -336,6 +340,10 @@
       <IgnoreSpecificDefaultLibraries>threadsafestatics.lib</IgnoreSpecificDefaultLibraries>
       <AdditionalOptions>/nocoffgrpinfo %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <PostBuildEvent>
+      <Command>mkdir "$(SolutionDir)BUILD\RELEASE\$(SolutionName)\x$(PlatformArchitecture)"
+copy /Y "$(OutDir)$(TargetName)$(TargetExt)" "$(SolutionDir)BUILD\RELEASE\$(SolutionName)\x$(PlatformArchitecture)\$(TargetName)$(TargetExt)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\COMMON\Utils.cpp" />

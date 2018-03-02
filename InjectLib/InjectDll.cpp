@@ -60,8 +60,7 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
    //
    // TODO: Prevent multi-entering from different threads when APC injection method used
    //
-   PVOID pNtDll = InjLdr::FindNtDllFromAddr(_ReturnAddress());  
-   hModule      = InjLdr::ModFixInplaceSelf(hModule,pNtDll);   // After this we can access a static variables
+   hModule      = InjLdr::ModFixInplaceSelf(hModule);   // After this we can access a static variables
    ReasonCall   = DLL_PROCESS_ATTACH;
    ModInjected  = true;   
   }        

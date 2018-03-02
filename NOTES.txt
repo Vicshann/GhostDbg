@@ -25,6 +25,7 @@ TODO:
  Inject into child processes
  Block constant Thread Suspend/Resume calls except for BP setting
  Kernel exception dispatcer hook(No hook of KiUserExceptionDispatcher and NtContinue)
+ Use unly a low level WinAPI in GhostDbg.hpp
 
 
 //-----------------------------------------------------------------------------------------------------------------
