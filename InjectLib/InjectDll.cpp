@@ -95,7 +95,7 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
      CreateDirectoryPath((LPSTR)&WorkFolder);
      LoadConfiguration();	
 	 if(LogMode & lmCons){AllocConsole();/*SetWinConsoleSizes(1000, 500, 1000, 500);*/}
-	 LOGMSG("Starting up... (Time=%08X), Owner='%s'", (DWORD)GetTime64(),(LPSTR)&StartUpDir);	
+	 LOGMSG("Time=%08X, Owner='%s'", (DWORD)GetTime64(),(LPSTR)&StartUpDir);	
      TrimFilePath((LPSTR)&StartUpDir);
      LOGMSG("WorkFolder: %s", (LPSTR)&WorkFolder);
      LOGMSG("StartUpDir: %s", (LPSTR)&StartUpDir);

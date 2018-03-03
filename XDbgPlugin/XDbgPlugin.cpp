@@ -374,10 +374,27 @@ int _stdcall SetSingleConfig(UINT CfgID, UINT CfgType, PVOID CfgAddr)
 //------------------------------------------------------------------------------------
 int _stdcall InjectProcess(HANDLE hProcess, DWORD ProcessID)
 {
+ CArr<BYTE> DllData;
+ BYTE DllPath[MAX_PATH];
  UINT Flags   = InjFlags|InjLdr::mfRawMod|fmCryHdr|fmCryImp|fmCryExp|fmCryRes;    // TODO: Inject method to cfg (Separated)
  UINT ResSize = 0;
- PVOID InjLib = GetResource(hInst, "InjLib", RT_RCDATA, &ResSize);
- if(!InjLib || !ResSize){DBGMSG("No InjLib in resources!"); return -1;}
+ PVOID InjLib = NULL;
+ lstrcpyA((LPSTR)&DllPath, (LPSTR)&StartUpDir);
+ lstrcatA((LPSTR)&DllPath,"injlib.dll");        // Store this name in some global definition?
+ HANDLE hFile = CreateFile((LPSTR)&DllPath,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+ if(hFile != INVALID_HANDLE_VALUE)
+  {
+   DWORD Result   = 0;
+   ResSize = GetFileSize(hFile,NULL);
+   DllData.Resize(ResSize);
+   if(ResSize)ReadFile(hFile,DllData.Data(),ResSize,&Result,NULL);
+   CloseHandle(hFile);
+   InjLib = DllData.Data();
+   DBGMSG("InjLib loaded from file: %s",(LPSTR)&DllPath);
+   plugin_logprintf("InjLib loaded from file: %s\n",(LPSTR)&DllPath);
+  }
+   else InjLib = GetResource(hInst, "InjLib", RT_RCDATA, &ResSize);
+ if(!InjLib || !ResSize){DBGMSG("No InjLib found!"); return -1;}
  bool POpened = (hProcess == NULL);
  if(POpened)hProcess = InjLdr::OpenRemoteProcess(ProcessID, Flags);
  if(!hProcess)return -2;  
