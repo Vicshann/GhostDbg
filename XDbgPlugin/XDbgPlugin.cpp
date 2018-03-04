@@ -381,7 +381,7 @@ int _stdcall InjectProcess(HANDLE hProcess, DWORD ProcessID)
  PVOID InjLib = NULL;
  lstrcpyA((LPSTR)&DllPath, (LPSTR)&StartUpDir);
  lstrcatA((LPSTR)&DllPath,"injlib.dll");        // Store this name in some global definition?
- HANDLE hFile = CreateFile((LPSTR)&DllPath,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+ HANDLE hFile = CreateFileA((LPSTR)&DllPath,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
  if(hFile != INVALID_HANDLE_VALUE)
   {
    DWORD Result   = 0;

@@ -21,6 +21,9 @@
 
 // ---------- SETTINGS ------------------
 UINT IPCSize = (1024*1024)*8;
+bool HideDllProxy = true;
+bool HideDllProxyDsk = true;
+bool RstDskHiddenProxy = true;
 bool AllowEjectOnDetach = false;
 //---------------------------------------
 //PHOOK(ProcRtlRestoreContext) HookRtlRestoreContext; 
@@ -32,9 +35,13 @@ PHOOK(ProcNtMapViewOfSection) HookNtMapViewOfSection;
 PHOOK(ProcNtGetContextThread) HookNtGetContextThread;
 PHOOK(ProcNtSetContextThread) HookNtSetContextThread;
 PHOOK(ProcNtTerminateThread) HookNtTerminateThread;
+PHOOK(ProcNtTerminateProcess) HookNtTerminateProcess;                          
 PHOOK(ProcNtContinue) HookNtContinue;
 
 bool ModInjected = false;
+BYTE ProxyEncKey = 0;
+PBYTE ProxyDllCopy = NULL;
+DWORD ProxyDllSize = 0;
 GhDbg::CDbgClient* Dbg = NULL;
 DWORD   LastExcThID;    // Helps to reduce overhead of NtContinue hook
 
@@ -50,10 +57,10 @@ BYTE  SysDirPath[MAX_PATH];
 BYTE  StartUpDir[MAX_PATH];
 BYTE  CfgFilePath[MAX_PATH];
 BYTE  WorkFolder[MAX_PATH];
-
 //===========================================================================
 BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved) 
 {
+ BYTE DllDirPath[MAX_PATH];
  bool RemTh = (DWORD)hModule & 0x0FFF;      // Normal HMODULE would be aligned at 0x1000  
  if(RemTh || (ReasonCall > 3))    
   {
@@ -63,7 +70,7 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
    hModule      = InjLdr::ModFixInplaceSelf(hModule);   // After this we can access a static variables
    ReasonCall   = DLL_PROCESS_ATTACH;
    ModInjected  = true;   
-  }        
+  }  
  switch(ReasonCall)	    
   {			 
    case DLL_PROCESS_ATTACH:
@@ -74,10 +81,10 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
      ThisLibSize  = GetRealModuleSize(ThisLibBase);
      MainExeSize  = GetRealModuleSize(MainExeBase);
 
-     GetModuleFileNameA((HMODULE)hModule,(LPSTR)&StartUpDir,sizeof(StartUpDir));        
+     GetModuleFileNameA((HMODULE)hModule,(LPSTR)&DllDirPath,sizeof(DllDirPath));        
      GetSystemDirectoryA((LPSTR)&SysDirPath,sizeof(SysDirPath));
      lstrcatA((LPSTR)&SysDirPath,"\\");
-     lstrcatA((LPSTR)&SysDirPath,GetFileName((LPSTR)&StartUpDir));
+     lstrcatA((LPSTR)&SysDirPath,GetFileName((LPSTR)&DllDirPath));
      GetModuleFileNameA((HMODULE)MainExeBase,(LPSTR)&StartUpDir,sizeof(StartUpDir));        
         
 	 lstrcpyA((LPSTR)&WorkFolder, (LPSTR)&StartUpDir);
@@ -94,14 +101,51 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
 
      CreateDirectoryPath((LPSTR)&WorkFolder);
      LoadConfiguration();	
+     BOOL dres = true;
+     if(!ModInjected && HideDllProxy)
+      {
+       PVOID EntryPT  = NULL;
+       PVOID NewBase  = NULL;
+       if(InjLdr::HideSelfProxyDll(hModule, GetModuleHandleA(ctENCSA("ntdll.dll")), (LPSTR)&SysDirPath, &NewBase, &EntryPT) > 0)   // Are imports from our proxy DLL is already resolved by loader at this point?
+        {
+         dres = ((decltype(DLLMain)*)EntryPT)(hModule, ReasonCall, lpReserved);   // Pass DLL_PROCESS_ATTACH notification
+         hModule = (HMODULE)NewBase;
+         if(HideDllProxyDsk && DllDirPath[0])
+          {
+           if(RstDskHiddenProxy)
+            {
+             ProxyEncKey = (GetTickCount() >> 3) | 0x80;
+             HANDLE hFile = CreateFileA((LPSTR)&DllDirPath,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+             if(hFile != INVALID_HANDLE_VALUE)
+              {
+               DWORD Result = 0;
+               ProxyDllSize = GetFileSize(hFile,NULL);
+               ProxyDllCopy = (PBYTE)VirtualAlloc(NULL,ProxyDllSize+MAX_PATH,MEM_COMMIT,PAGE_EXECUTE_READWRITE);  
+               if(!ProxyDllSize || !ProxyDllCopy || !ReadFile(hFile,ProxyDllCopy,ProxyDllSize,&Result,NULL) || !Result){VirtualFree(ProxyDllCopy,0,MEM_RELEASE); ProxyDllCopy=NULL;}
+               CloseHandle(hFile);
+               ProxyDllSize = Result;
+               memcpy(&ProxyDllCopy[ProxyDllSize],&DllDirPath,MAX_PATH);
+               for(UINT ctr=0,total=ProxyDllSize+MAX_PATH;ctr < total;ctr++)ProxyDllCopy[ctr] = EncryptByteWithCtr(ProxyDllCopy[ctr], ProxyEncKey, ctr);             
+              }
+             if(ProxyDllCopy)      
+              {
+               HookNtTerminateProcess.SetHook("NtTerminateProcess","ntdll.dll");
+              }
+            }
+           DeleteFileA((LPSTR)&DllDirPath);     // It is no longer mapped
+          }
+        }
+      }
 	 if(LogMode & lmCons){AllocConsole();/*SetWinConsoleSizes(1000, 500, 1000, 500);*/}
 	 LOGMSG("Time=%08X, Owner='%s'", (DWORD)GetTime64(),(LPSTR)&StartUpDir);	
+//	 LOGMSG("HookMod=%p, RealMod=%p", hModule, hRealMod);
      TrimFilePath((LPSTR)&StartUpDir);
      LOGMSG("WorkFolder: %s", (LPSTR)&WorkFolder);
      LOGMSG("StartUpDir: %s", (LPSTR)&StartUpDir);
      LOGMSG("SysDirPath: %s", (LPSTR)&SysDirPath);
-//	 LOGMSG("HookMod=%p, RealMod=%p", hModule, hRealMod);
-     if(!InitApplication())return false;    
+     if(!InitApplication())return false; 
+     if(RemTh){LOGMSG("Terminating injected thread: %u", GetCurrentThreadId()); TerminateThread(GetCurrentThread(),0);}     //Stack frame may be incorrect
+     return dres;
     }
      break;									
    case DLL_THREAD_ATTACH:
@@ -117,7 +161,6 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
 
    default : return false;  
   }
- if(RemTh){LOGMSG("Terminating injected thread: %u", GetCurrentThreadId()); TerminateThread(GetCurrentThread(),0);}     //Stack frame may be incorrect
  return true;
 }
 //====================================================================================
@@ -131,7 +174,9 @@ void _stdcall LoadConfiguration(void)
  if(str.Length())Root.FromString(str);
  CJSonItem* Params = EnsureJsnParam(jsObject, "Parameters", &Root);  
  LogMode       = EnsureJsnParam((int)LogMode,       "LogMode",       Params)->GetValInt();
- IPCSize       = EnsureJsnParam(IPCSize,            "IPCSize",       Params)->GetValInt();  
+ IPCSize       = EnsureJsnParam(IPCSize,            "IPCSize",       Params)->GetValInt();    
+ HideDllProxy  = EnsureJsnParam(HideDllProxy,         "HideDllProxy",    Params)->GetValBol(); 
+ HideDllProxyDsk = EnsureJsnParam(HideDllProxyDsk,         "HideDllProxyDsk",    Params)->GetValBol(); 
  AllowEjectOnDetach = EnsureJsnParam(AllowEjectOnDetach,         "AllowEjectOnDetach",    Params)->GetValBol();  
         
  CJSonItem* DbgParams = EnsureJsnParam(jsObject, "DbgClient", &Root);   
@@ -162,7 +207,9 @@ void _stdcall SaveConfiguration(int BinFmt)
  if(str.Length())Root.FromString(str);
  CJSonItem* Params = EnsureJsnParam(jsObject, "Parameters", &Root);  
  LogMode       = SetJsnParamValue((int)LogMode,       "LogMode",       Params)->GetValInt();
- IPCSize       = SetJsnParamValue(IPCSize,            "IPCSize",       Params)->GetValInt();   
+ IPCSize       = SetJsnParamValue(IPCSize,            "IPCSize",       Params)->GetValInt();  
+ HideDllProxy       = SetJsnParamValue(HideDllProxy,         "HideDllProxy",    Params)->GetValBol(); 
+ HideDllProxyDsk       = SetJsnParamValue(HideDllProxyDsk,         "HideDllProxyDsk",    Params)->GetValBol(); 
  AllowEjectOnDetach       = SetJsnParamValue(AllowEjectOnDetach,         "AllowEjectOnDetach",    Params)->GetValBol();   
      
  CJSonItem* DbgParams = EnsureJsnParam(jsObject, "DbgClient", &Root);   
@@ -203,18 +250,20 @@ bool _stdcall InitApplication(void)
  HookRtlDispatchException.SetHook((PBYTE)GhDbg::SNtDll::FindRtlDispatchException());  
  HookNtGetContextThread.SetHook("NtGetContextThread","ntdll.dll");
  HookNtSetContextThread.SetHook("NtSetContextThread","ntdll.dll");
- HookNtTerminateThread.SetHook("NtTerminateThread","ntdll.dll");   
+ HookNtTerminateThread.SetHook("NtTerminateThread","ntdll.dll");
+// HookNtTerminateProcess.SetHook("NtTerminateProcess","ntdll.dll");       // Only for ProxyRestore to disk
  HookNtContinue.SetHook("NtContinue","ntdll.dll"); 
  LOGMSG("Hooks set");             
  Dbg->Start(IPCSize);        // Start it from DLL Main to avoid of similair DLL being loaded again
  LOGMSG("IPC started");
  return true;
-}
+}                                               
 //------------------------------------------------------------------------------------
 void _stdcall UnInitApplication(void)
 {
  HookNtContinue.Remove();
  HookNtTerminateThread.Remove();
+ HookNtTerminateProcess.Remove();
  HookRtlDispatchException.Remove();   
  HookNtUnmapViewOfSection.Remove();
  HookNtMapViewOfSection.Remove(); 
@@ -229,7 +278,9 @@ int _stdcall DbgUsrReqCallback(ShMem::CMessageIPC::SMsgHdr* Req, PVOID ArgA, UIN
 {
  if(Req->MsgID == GhDbg::miDbgGetConfigs)
   {
-   ShMem::CArgPack<>* apo = (ShMem::CArgPack<>*)ArgA;
+   ShMem::CArgPack<>* apo = (ShMem::CArgPack<>*)ArgA;   
+   apo->PushArgEx(HideDllProxy, "Hide Proxy DLL (After Restart)", GhDbg::CDbgClient::MakeCfgItemID(++ArgB,GhDbg::dtBool));  
+   apo->PushArgEx(HideDllProxyDsk, "Hide Proxy DLL on Disk (After Restart)", GhDbg::CDbgClient::MakeCfgItemID(++ArgB,GhDbg::dtBool));  
    if(ModInjected)apo->PushArgEx(AllowEjectOnDetach, "Allow Eject On Detach", GhDbg::CDbgClient::MakeCfgItemID(++ArgB,GhDbg::dtBool));    
    if(ModInjected){bool Nons = false; apo->PushArgEx(Nons, "Eject", GhDbg::CDbgClient::MakeCfgItemID(++ArgB,GhDbg::dtBool));}    
    return ArgB;
@@ -241,11 +292,17 @@ int _stdcall DbgUsrReqCallback(ShMem::CMessageIPC::SMsgHdr* Req, PVOID ArgA, UIN
    if(ArgA)
     {
      switch(CfgIdx)                            // New Process Injection
-      {
+      {  
        case 1:
+         HideDllProxy = *(bool*)ArgA;
+        break;
+       case 2:
+         HideDllProxyDsk = *(bool*)ArgA;
+        break;
+       case 3:
          AllowEjectOnDetach = *(bool*)ArgA;
         break;
-       case 2:  
+       case 4:  
          if(ModInjected)
           {
            LOGMSG("Ejecting by user!");
@@ -356,6 +413,27 @@ NTSTATUS NTAPI ProcNtContinue(PCONTEXT ContextRecord, BOOLEAN TestAlert)        
 {
  if(Dbg && (GetCurrentThreadId() != LastExcThID) && Dbg->IsActive())Dbg->GetThread(GetCurrentThreadId());       // Report this thread if it is not in list yet
  return HookNtContinue.OrigProc(ContextRecord, TestAlert);   // Will not return
+}
+//------------------------------------------------------------------------------------
+NTSTATUS NTAPI ProcNtTerminateProcess(HANDLE ProcessHandle, NTSTATUS ExitStatus)
+{
+ if(RstDskHiddenProxy && ProxyDllCopy)   // Restore the Proxy Dll on disk
+  {   
+   BYTE DllPath[MAX_PATH];
+   for(UINT ctr=0,total=ProxyDllSize+MAX_PATH;ctr < total;ctr++)ProxyDllCopy[ctr] = DecryptByteWithCtr(ProxyDllCopy[ctr], ProxyEncKey, ctr);
+   memcpy(&DllPath,&ProxyDllCopy[ProxyDllSize],MAX_PATH);
+   HANDLE hFile = CreateFileA((LPSTR)&DllPath,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);
+   if(hFile != INVALID_HANDLE_VALUE)
+    {
+     DWORD Result = 0;
+     WriteFile(hFile,ProxyDllCopy,ProxyDllSize,&Result,NULL);
+     CloseHandle(hFile);
+     VirtualFree(ProxyDllCopy,0,MEM_RELEASE); 
+     ProxyDllCopy = NULL;
+     LOGMSG("ProxyDll Restored: %s", (LPSTR)&DllPath);
+    }
+  }
+ return HookNtTerminateProcess.OrigProc(ProcessHandle, ExitStatus);
 }
 //------------------------------------------------------------------------------------
 // Exit from a thread`s proc will also end up here  
@@ -625,7 +703,7 @@ APIWRAPPER(LibPathName, CryptVerifySignatureA)
 APIWRAPPER(LibPathName, CryptVerifySignatureW)  */
 
 // version.dll
-/*APIWRAPPER(LibPathName, GetFileVersionInfoA)
+APIWRAPPER(LibPathName, GetFileVersionInfoA)
 APIWRAPPER(LibPathName, GetFileVersionInfoByHandle)
 APIWRAPPER(LibPathName, GetFileVersionInfoExA)
 APIWRAPPER(LibPathName, GetFileVersionInfoExW)
@@ -641,7 +719,7 @@ APIWRAPPER(LibPathName, VerInstallFileW)
 APIWRAPPER(LibPathName, VerLanguageNameA)
 APIWRAPPER(LibPathName, VerLanguageNameW)
 APIWRAPPER(LibPathName, VerQueryValueA)
-APIWRAPPER(LibPathName, VerQueryValueW) */ 
+APIWRAPPER(LibPathName, VerQueryValueW)  
 
 }
 //====================================================================================

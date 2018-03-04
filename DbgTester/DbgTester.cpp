@@ -11,7 +11,7 @@ BYTE  StartUpDir[MAX_PATH];
 //------------------------------------------------------------------------------------------------------------
 DWORD WINAPI TstMainThread(LPVOID lpThreadParameter)
 {          
-// HMODULE hLib = LoadLibraryA((LPSTR)&DllPath);
+ HMODULE hLib = LoadLibraryA((LPSTR)&DllPath);
 // HMODULE hLibV = LoadLibraryA("XEDParse.dll");
  while(!BreakWrk)  // Breakpoints test loop
   {

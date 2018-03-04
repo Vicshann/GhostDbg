@@ -59,5 +59,8 @@
     <ClInclude Include="..\COMMON\GhostDbg.hpp">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="..\COMMON\CompileTime.hpp">
+      <Filter>Common</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
