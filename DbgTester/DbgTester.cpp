@@ -33,7 +33,12 @@ void _stdcall SysMain(DWORD UnkArg)
  lstrcpyA((LPSTR)&DllPath, (LPSTR)&StartUpDir);
  lstrcatA((LPSTR)&DllPath,"injlib.dll");
 
- HANDLE hThread = CreateThread(NULL,0,&TstMainThread,NULL,0,NULL);
+// CONTEXT ctx;
+ HANDLE hThread = CreateThread(NULL,0,&TstMainThread,(PVOID)0x1123344,CREATE_SUSPENDED,NULL);   //   CREATE_SUSPENDED
+// memset(&ctx,0,sizeof(ctx));
+// ctx.ContextFlags = CONTEXT_CONTROL|CONTEXT_INTEGER;
+// GetThreadContext(hThread, &ctx);
+
  WaitForSingleObject(hThread,INFINITE);
  CloseHandle(hThread);
  ExitProcess(0);  

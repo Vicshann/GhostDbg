@@ -43,6 +43,7 @@ BYTE ProxyEncKey = 0;
 PBYTE ProxyDllCopy = NULL;
 DWORD ProxyDllSize = 0;
 GhDbg::CDbgClient* Dbg = NULL;
+HANDLE  hIpcTh     = NULL;
 DWORD   LastExcThID;    // Helps to reduce overhead of NtContinue hook
 
 LPSTR   LibPathName = NULL;
@@ -100,18 +101,28 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
      lstrcatA((LPSTR)&CfgFilePath, CFGFILE);	
 
      CreateDirectoryPath((LPSTR)&WorkFolder);
-     LoadConfiguration();	
+     LoadConfiguration();
+	 if(LogMode & lmCons){AllocConsole();/*SetWinConsoleSizes(1000, 500, 1000, 500);*/}
+	 LOGMSG("Time=%08X, ExeBase=%p, Owner='%s'", (DWORD)GetTime64(),MainExeBase,(LPSTR)&StartUpDir);	
+//	 LOGMSG("HookMod=%p, RealMod=%p", hModule, hRealMod);
+     TrimFilePath((LPSTR)&StartUpDir);
+     LOGMSG("WorkFolder: %s", (LPSTR)&WorkFolder);
+     LOGMSG("StartUpDir: %s", (LPSTR)&StartUpDir);
+     LOGMSG("SysDirPath: %s", (LPSTR)&SysDirPath);	
      BOOL dres = true;
      if(!ModInjected && HideDllProxy)
       {
-       PVOID EntryPT  = NULL;
-       PVOID NewBase  = NULL;
+       PVOID EntryPT = NULL;
+       PVOID NewBase = NULL;
+       hIpcTh = CreateThread(NULL,0,&GhDbg::CDbgClient::IPCQueueThread,NULL,CREATE_SUSPENDED,NULL);   // Some anticheats prevent creation of threads outside of any module
        if(InjLdr::HideSelfProxyDll(hModule, GetModuleHandleA(ctENCSA("ntdll.dll")), (LPSTR)&SysDirPath, &NewBase, &EntryPT) > 0)   // Are imports from our proxy DLL is already resolved by loader at this point?
         {
+         LOGMSG("Calling EP of a real DLL: Base=%p, EP=%p",hModule,EntryPT);
          dres = ((decltype(DLLMain)*)EntryPT)(hModule, ReasonCall, lpReserved);   // Pass DLL_PROCESS_ATTACH notification
          hModule = (HMODULE)NewBase;
          if(HideDllProxyDsk && DllDirPath[0])
           {
+           LOGMSG("Hiding from disk...");
            if(RstDskHiddenProxy)
             {
              ProxyEncKey = (GetTickCount() >> 3) | 0x80;
@@ -133,16 +144,11 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
               }
             }
            DeleteFileA((LPSTR)&DllDirPath);     // It is no longer mapped
+           LOGMSG("Done hiding from disk!");
           }
         }
+       LOGMSG("Done hiding!");
       }
-	 if(LogMode & lmCons){AllocConsole();/*SetWinConsoleSizes(1000, 500, 1000, 500);*/}
-	 LOGMSG("Time=%08X, Owner='%s'", (DWORD)GetTime64(),(LPSTR)&StartUpDir);	
-//	 LOGMSG("HookMod=%p, RealMod=%p", hModule, hRealMod);
-     TrimFilePath((LPSTR)&StartUpDir);
-     LOGMSG("WorkFolder: %s", (LPSTR)&WorkFolder);
-     LOGMSG("StartUpDir: %s", (LPSTR)&StartUpDir);
-     LOGMSG("SysDirPath: %s", (LPSTR)&SysDirPath);
      if(!InitApplication())return false; 
      if(RemTh){LOGMSG("Terminating injected thread: %u", GetCurrentThreadId()); TerminateThread(GetCurrentThread(),0);}     //Stack frame may be incorrect
      return dres;
@@ -254,7 +260,7 @@ bool _stdcall InitApplication(void)
 // HookNtTerminateProcess.SetHook("NtTerminateProcess","ntdll.dll");       // Only for ProxyRestore to disk
  HookNtContinue.SetHook("NtContinue","ntdll.dll"); 
  LOGMSG("Hooks set");             
- Dbg->Start(IPCSize);        // Start it from DLL Main to avoid of similair DLL being loaded again
+ Dbg->Start(IPCSize, hIpcTh);        // Start it from DLL Main to avoid of similair DLL being loaded again
  LOGMSG("IPC started");
  return true;
 }                                               
@@ -386,7 +392,7 @@ NTSTATUS NTAPI ProcNtMapViewOfSection(HANDLE SectionHandle, HANDLE ProcessHandle
  NTSTATUS res = HookNtMapViewOfSection.OrigProc(SectionHandle,ProcessHandle,BaseAddress,ZeroBits,CommitSize,SectionOffset,ViewSize,InheritDisposition,AllocationType,Win32Protect); 
  if(!res && (ProcessHandle == NtCurrentProcess) && BaseAddress && *BaseAddress && ViewSize && *ViewSize && Dbg && Dbg->IsActive() && IsValidPEHeaderBlk(*BaseAddress, Dbg->IsMemAvailable(*BaseAddress)))    // Try to get the module`s name?
   {            
-   LOGMSG("Module: Status=%08X, SectionHandle=%p, BaseAddress=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,*BaseAddress,*ViewSize,AllocationType,Win32Protect);
+   DBGMSG("Module: Status=%08X, SectionHandle=%p, BaseAddress=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,*BaseAddress,*ViewSize,AllocationType,Win32Protect);
    if(Dbg && Dbg->IsActive())Dbg->Report_LOAD_DLL_DEBUG_INFO(*BaseAddress);    // Events:TLS Callbacks must be disabled or xg4dbg will crash in 'cbLoadDll{ auto modInfo = ModInfoFromAddr(duint(base));}' (because it won`t check for NULL) if this mapping will be unmapped too soon
   } 
 //   else {LOGMSG("Status=%08X, SectionHandle=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,ViewSize,AllocationType,Win32Protect);}
@@ -397,7 +403,7 @@ NTSTATUS NTAPI ProcNtUnmapViewOfSection(HANDLE ProcessHandle, PVOID BaseAddress)
 {
  if((ProcessHandle == NtCurrentProcess) && Dbg && Dbg->IsActive() && IsValidPEHeaderBlk(BaseAddress, Dbg->IsMemAvailable(BaseAddress)))
   {
-   LOGMSG("BaseAddress=%p",BaseAddress);
+   DBGMSG("BaseAddress=%p",BaseAddress);
    if(Dbg && Dbg->IsActive() && Dbg->IsOtherConnections())Dbg->Report_UNLOAD_DLL_DEBUG_EVENT(BaseAddress); 
   }                                            
  return HookNtUnmapViewOfSection.OrigProc(ProcessHandle,BaseAddress);
