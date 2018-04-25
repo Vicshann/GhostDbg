@@ -29,7 +29,7 @@ bool AllowEjectOnDetach = false;
 //PHOOK(ProcRtlRestoreContext) HookRtlRestoreContext; 
 //PHOOK(ProcKiUserExceptionDispatcher) HookKiUserExceptionDispatcher;
 //PHOOK(ProcLdrInitializeThunk) HookLdrInitializeThunk;
-PHOOK(ProcRtlDispatchException) HookRtlDispatchException; 
+//PHOOK(ProcRtlDispatchException) HookRtlDispatchException;
 PHOOK(ProcNtUnmapViewOfSection) HookNtUnmapViewOfSection;     
 PHOOK(ProcNtMapViewOfSection) HookNtMapViewOfSection;
 PHOOK(ProcNtGetContextThread) HookNtGetContextThread;
@@ -38,6 +38,7 @@ PHOOK(ProcNtTerminateThread) HookNtTerminateThread;
 PHOOK(ProcNtTerminateProcess) HookNtTerminateProcess;                          
 PHOOK(ProcNtContinue) HookNtContinue;
 
+SHookRtlDispatchException ExpDispHook;
 bool ModInjected = false;
 BYTE ProxyEncKey = 0;
 PBYTE ProxyDllCopy = NULL;
@@ -252,29 +253,29 @@ bool _stdcall InitApplication(void)
  LoadConfiguration();
  LOGMSG("IPC created");
  HookNtMapViewOfSection.SetHook("NtMapViewOfSection","ntdll.dll");
- HookNtUnmapViewOfSection.SetHook("NtUnmapViewOfSection","ntdll.dll"); 
- HookRtlDispatchException.SetHook((PBYTE)GhDbg::SNtDll::FindRtlDispatchException());  
+ HookNtUnmapViewOfSection.SetHook("NtUnmapViewOfSection","ntdll.dll");   
  HookNtGetContextThread.SetHook("NtGetContextThread","ntdll.dll");
  HookNtSetContextThread.SetHook("NtSetContextThread","ntdll.dll");
  HookNtTerminateThread.SetHook("NtTerminateThread","ntdll.dll");
 // HookNtTerminateProcess.SetHook("NtTerminateProcess","ntdll.dll");       // Only for ProxyRestore to disk
  HookNtContinue.SetHook("NtContinue","ntdll.dll"); 
- LOGMSG("Hooks set");             
+ ExpDispHook.SetHook(ProcExpDispBefore, ProcExpDispAfter);
+ LOGMSG("Hooks set");  
  Dbg->Start(IPCSize, hIpcTh);        // Start it from DLL Main to avoid of similair DLL being loaded again
  LOGMSG("IPC started");
  return true;
 }                                               
 //------------------------------------------------------------------------------------
 void _stdcall UnInitApplication(void)
-{
+{                                
  HookNtContinue.Remove();
  HookNtTerminateThread.Remove();
  HookNtTerminateProcess.Remove();
- HookRtlDispatchException.Remove();   
  HookNtUnmapViewOfSection.Remove();
  HookNtMapViewOfSection.Remove(); 
  HookNtSetContextThread.Remove();
  HookNtGetContextThread.Remove();
+ ExpDispHook.Remove();
  LOGMSG("Hooks removed");
  if(Dbg)delete(Dbg);
  LOGMSG("IPC destroyed");
@@ -369,19 +370,41 @@ void NTAPI ProcLdrInitializeThunk(PVOID ArgA, PVOID ArgB, PVOID ArgC, PVOID ArgD
  HookLdrInitializeThunk.OrigProc(ArgA, ArgB, ArgC, ArgD);     // Must be tail optimized - Requires optimization to be enabled (O1,O2,Ox)
 }  */
 //------------------------------------------------------------------------------------
-BOOLEAN NTAPI ProcRtlDispatchException(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT ContextRecord)
+/* x64
+RSP+00 = RetAddr
+RSP+08 = RCX
+RSP+10 = RDX
+RSP+18 = R8
+RSP+20 = R9
+
+      mov     rcx, rsp
+      add     rcx, 4F0h       ; EXCEPTION_RECORD ExceptionRecord
+      mov     rdx, rsp        ; PCONTEXT ContextRecord
+      call    RtlDispatchException     // Reserved space for 4 arguments is in beginning of CONTEXT on x64!
+// Can`t hook it as usual. Too many dirty tricks are used with SEH, VEH and stack unwinding 
+// It may be called recursievly with RtlRaiseStatus
+*/                                                                                    
+bool _cdecl ProcExpDispBefore(volatile PVOID ArgA, volatile PVOID ArgB, volatile PVOID ArgC, volatile PVOID ArgD, volatile PVOID RetVal)
 {
+ DBGMSG("Code=%08X, Addr=%p, FCtx=%08X",((PEXCEPTION_RECORD)ArgA)->ExceptionCode, ((PEXCEPTION_RECORD)ArgA)->ExceptionAddress, ((PCONTEXT)ArgB)->ContextFlags);
  DWORD ThID = LastExcThID = GetCurrentThreadId();
- if(!Dbg || !Dbg->IsActive() || Dbg->IsDbgThreadID(ThID))return HookRtlDispatchException.OrigProc(ExceptionRecord, ContextRecord);
- if(Dbg->HandleException(ThID, ExceptionRecord, ContextRecord))return true;    // Handled by a debugger
- if(!Dbg->HideDbgState)HookRtlDispatchException.OrigProc(ExceptionRecord, ContextRecord);
- CONTEXT ForgedCtx;                            // Can it be detected that this is a copy of original CONTEXT and have a different address on stack?
- memcpy(&ForgedCtx,ContextRecord,sizeof(CONTEXT));
- Dbg->DebugThreadLoad(ThID, &ForgedCtx);       // Load any previous DRx modifications from internal buffer     
- BOOLEAN res = HookRtlDispatchException.OrigProc(ExceptionRecord, &ForgedCtx);
- Dbg->DebugThreadSave(ThID, &ForgedCtx);  // Save any modifications to DRx in a separate struct 
- Dbg->DebugRstExcContext(ContextRecord, &ForgedCtx);
- return res;    
+ if(!Dbg || !Dbg->IsActive() || Dbg->IsDbgThreadID(ThID))return true;
+ if(Dbg->HandleException(ThID, (PEXCEPTION_RECORD)ArgA, (PCONTEXT)ArgB)){RetVal = (PVOID)TRUE; DBGMSG("Handled!"); return false;}    // Handled by a debugger
+ if(!Dbg->HideDbgState)return true;
+
+// CONTEXT ForgedCtx;      // No debugger context hiding for now :(                      // Can it be detected that this is a copy of original CONTEXT and have a different address on stack?
+// memcpy(&ForgedCtx,ContextRecord,sizeof(CONTEXT));
+// Dbg->DebugThreadLoad(ThID, &ForgedCtx);       // Load any previous DRx modifications from internal buffer     
+// BOOLEAN res = HookRtlDispatchException.OrigProc(ExceptionRecord, &ForgedCtx);
+ return true;
+}
+//------------------------------------------------------------------------------------
+bool _cdecl ProcExpDispAfter(volatile PVOID ArgA, volatile PVOID ArgB, volatile PVOID ArgC, volatile PVOID ArgD, volatile PVOID RetVal)
+{
+ DBGMSG("Exiting!"); 
+// Dbg->DebugThreadSave(ThID, &ForgedCtx);  // Save any modifications to DRx in a separate struct 
+// Dbg->DebugRstExcContext(ContextRecord, &ForgedCtx);
+ return true;
 }
 //------------------------------------------------------------------------------------
 // SEC_FILE             0x0800000     
@@ -479,7 +502,7 @@ NTSTATUS NTAPI ProcNtSetContextThread(HANDLE ThreadHandle, PCONTEXT Context)   /
 namespace ProxyExport
 {
 // winspool.drv
-/*APIWRAPPER(LibPathName, GetDefaultPrinterA)
+APIWRAPPER(LibPathName, GetDefaultPrinterA)
 APIWRAPPER(LibPathName, AbortPrinter)
 APIWRAPPER(LibPathName, AddFormA)
 APIWRAPPER(LibPathName, AddFormW)
@@ -665,7 +688,7 @@ APIWRAPPER(LibPathName, UploadPrinterDriverPackageA)
 APIWRAPPER(LibPathName, UploadPrinterDriverPackageW)
 APIWRAPPER(LibPathName, WaitForPrinterChange)
 APIWRAPPER(LibPathName, WritePrinter)
-APIWRAPPER(LibPathName, XcvDataW) */
+APIWRAPPER(LibPathName, XcvDataW) 
 
 // cryptsp.dll
 /*APIWRAPPER(LibPathName, CryptAcquireContextA)

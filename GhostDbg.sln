@@ -16,6 +16,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		MAKE_JUNCTIONS.bat = MAKE_JUNCTIONS.bat
 		NOTES.txt = NOTES.txt
 		Readme.txt = Readme.txt
+		INFO\RtlDispatchException.txt = INFO\RtlDispatchException.txt
 		SET_EVARS.bat = SET_EVARS.bat
 		ZIP_RELEASE.vbs = ZIP_RELEASE.vbs
 	EndProjectSection

@@ -27,5 +27,7 @@ TODO:
  Kernel exception dispatcer hook(No hook of KiUserExceptionDispatcher and NtContinue)
  Use unly a low level WinAPI in GhostDbg.hpp
 
-
+ISSUES:
+ Software breakpoints is very dangerous to set
+ Because of SEH recursion a DBG context protection is not used(Find a way to mark a thread with RefCtr)
 //-----------------------------------------------------------------------------------------------------------------

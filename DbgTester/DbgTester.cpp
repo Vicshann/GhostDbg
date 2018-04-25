@@ -31,10 +31,11 @@ void _stdcall SysMain(DWORD UnkArg)
     int slctr = lstrlenA((LPSTR)&StartUpDir);
     while(--slctr >= 0){if((StartUpDir[slctr] == 0x2F)||(StartUpDir[slctr] == 0x5C)){StartUpDir[slctr+1] = 0; break;}}
  lstrcpyA((LPSTR)&DllPath, (LPSTR)&StartUpDir);
- lstrcatA((LPSTR)&DllPath,"injlib.dll");
+ lstrcatA((LPSTR)&DllPath, "injlib.dll");
 
 // CONTEXT ctx;
  HANDLE hThread = CreateThread(NULL,0,&TstMainThread,(PVOID)0x1123344,CREATE_SUSPENDED,NULL);   //   CREATE_SUSPENDED
+  ResumeThread(hThread);
 // memset(&ctx,0,sizeof(ctx));
 // ctx.ContextFlags = CONTEXT_CONTROL|CONTEXT_INTEGER;
 // GetThreadContext(hThread, &ctx);

@@ -1,0 +1,263 @@
+
+// x64
+push r15 
+push r14
+push r13
+push r12 
+push r11
+push r10
+push rdi
+push rsi  
+push rbp 
+push rbx   
+push rax   <<<< Return val, first on stack
+push r9   // In reserve
+push r8   // In reserve
+push rdx  // In reserve
+push rcx  // In reserve
+movabs rax,0x0000000000000000                                                                                                                 |
+call rax        // With this ret addr stack will be aligned to 16 as required 
+test eax, eax   // TRUE to call an original code                                                                                                                                    |
+pop rcx
+pop rdx
+pop r8
+pop r9
+pop rax
+pop rbx 
+pop rbp
+pop rsi
+pop rdi
+pop r10
+pop r11
+pop r12
+pop r13
+pop r14
+pop r15
+jnz Code
+retn
+Code:
+Original code
+
+41 57 41 56 41 55 41 54 41 53 41 52 57 56 55 53 50 41 51 41 50 52 51 48 B8 00 00 00 00 00 00 00 00 FF D0 85 C0 59 5A 41 58 41 59 58 5B 5D 5E 5F 41 5A 41 5B 41 5C 41 5D 41 5E 41 5F 75 01 C3
+--------------------------------------------------------------------------------------
+
+// x32
+push edi                                                                                                   
+push esi                                                                                                    
+push ebp                                                                                                    
+push ebx                                                                                                    
+push eax     <<<< Return val, fifth on stack
+push edx                                                                                                    
+push ecx                                                                                                                                                                                                     
+push dword ptr ss:[esp+24]                                                                                  
+push dword ptr ss:[esp+24]                                                                                  
+call ntdll.775FAC45                                                                                         
+test eax,eax                                                                                                
+pop eax    // Arg                                                                                                 
+pop eax    // Arg                                                                                                  
+pop ecx 
+pop edx 
+pop eax                                                                                                    
+pop ebx                                                                                                                                                                                                                                                                                                    
+pop ebp                                                                                                    
+pop esi                                                                                                 
+pop edi                                                                                                    
+jne Code                                                                                         
+ret 8                                                                                                     
+Code:
+Original code
+
+57 56 55 52 51 53 50 FF 74 24 24 FF 74 24 24 E8 00 00 00 00 85 C0 58 58 58 5B 59 5A 5D 5E 5F 75 03 C2 08 00
+
+
+
+
+
+RtlDispatchException
+--------------------------------------------------------------------------------------
+// Xp
+.text:7C92A50E                 mov     edi, edi
+.text:7C92A510                 push    ebp
+.text:7C92A511                 mov     ebp, esp
+.text:7C92A513                 sub     esp, 64h
+.text:7C92A516                 push    esi
+.text:7C92A517                 push    [ebp+arg_4]
+.text:7C92A51A                 mov     esi, [ebp+arg_0]
+.text:7C92A51D                 push    esi
+.text:7C92A51E                 mov     [ebp+var_1], 0
+.text:7C92A522                 call    _RtlCallVectoredExceptionHandlers@8 ; RtlCallVectoredExceptionHandlers(x,x)
+.text:7C92A527                 test    al, al
+.text:7C92A529                 jnz     loc_7C950002  
+
+.text:7C950002                 mov     [ebp+var_1], 1
+.text:7C950006                 jmp     loc_7C92A5E1
+
+.text:7C92A5E1                 mov     al, [ebp+var_1]
+.text:7C92A5E4                 pop     esi
+.text:7C92A5E5                 leave
+.text:7C92A5E6                 retn    8
+-------------------------------------------------------------------------------------------------
+// Win7 x32
+.text:77EDF944                 mov     edi, edi
+.text:77EDF946                 push    ebp
+.text:77EDF947                 mov     ebp, esp
+.text:77EDF949                 sub     esp, 64h
+.text:77EDF94C                 push    esi
+.text:77EDF94D                 push    [ebp+Context]
+.text:77EDF950                 mov     esi, [ebp+ExceptionRecord]
+.text:77EDF953                 push    esi
+.text:77EDF954                 mov     [ebp+var_1], 0
+.text:77EDF958                 call    _RtlCallVectoredExceptionHandlers@8 ; RtlCallVectoredExceptionHandlers(x,x)
+.text:77EDF95D                 test    al, al
+.text:77EDF95F                 jnz     loc_77F50270
+
+.text:77F50270                 mov     [ebp+var_1], 1
+.text:77F50274                 jmp     loc_77EC6049
+
+.text:77EC6049                 push    [ebp+Context]
+.text:77EC604C                 push    esi
+.text:77EC604D                 call    _RtlCallVectoredContinueHandlers@8 ; RtlCallVectoredContinueHandlers(x,x)
+.text:77EC6052                 mov     al, [ebp+var_1]
+.text:77EC6055                 pop     esi
+.text:77EC6056                 leave
+.text:77EC6057                 retn    8
+-------------------------------------------------------------------------------------------------
+// Win7 x64
+.text:0000000078E68E20 FF F3                                   push    rbx
+.text:0000000078E68E22 55                                      push    rbp
+.text:0000000078E68E23 56                                      push    rsi
+.text:0000000078E68E24 57                                      push    rdi
+.text:0000000078E68E25 41 54                                   push    r12
+.text:0000000078E68E27 41 55                                   push    r13
+.text:0000000078E68E29 41 56                                   push    r14
+.text:0000000078E68E2B 41 57                                   push    r15
+.text:0000000078E68E2D 48 81 EC 98 06 00 00                    sub     rsp, 698h
+.text:0000000078E68E34 45 33 C0                                xor     r8d, r8d
+.text:0000000078E68E37 48 8B EA                                mov     rbp, rdx
+.text:0000000078E68E3A 4C 8B F1                                mov     r14, rcx
+.text:0000000078E68E3D E8 4E FE FF FF                          call    RtlpCallVectoredHandlers
+.text:0000000078E68E42 84 C0                                   test    al, al
+.text:0000000078E68E44 0F 85 86 5E 05 00                       jnz     loc_78EBECD0
+
+.text:0000000078EBECD0 41 B7 01                                mov     r15b, 1
+.text:0000000078EBECD3 E9 20 F1 F9 FF                          jmp     loc_78E5DDF8
+
+.text:0000000078E5DDF8 48 8B D5                                mov     rdx, rbp
+.text:0000000078E5DDFB 49 8B CE                                mov     rcx, r14
+.text:0000000078E5DDFE E8 1D 00 00 00                          call    RtlCallVectoredContinueHandlers
+.text:0000000078E5DE03 41 8A C7                                mov     al, r15b
+.text:0000000078E5DE06 48 81 C4 98 06 00 00                    add     rsp, 698h
+.text:0000000078E5DE0D 41 5F                                   pop     r15
+.text:0000000078E5DE0F 41 5E                                   pop     r14
+.text:0000000078E5DE11 41 5D                                   pop     r13
+.text:0000000078E5DE13 41 5C                                   pop     r12
+.text:0000000078E5DE15 5F                                      pop     rdi
+.text:0000000078E5DE16 5E                                      pop     rsi
+.text:0000000078E5DE17 5D                                      pop     rbp
+.text:0000000078E5DE18 5B                                      pop     rbx
+.text:0000000078E5DE19 C3                                      retn
+-------------------------------------------------------------------------------------------------
+// Win10 x64
+.text:0000000180013890                 mov     [rsp+18h], rbx
+.text:0000000180013895                 push    rbp             ; ^^^^^^^^^ Into CONTEXT!
+.text:0000000180013896                 push    rsi
+.text:0000000180013897                 push    rdi
+.text:0000000180013898                 push    r12
+.text:000000018001389A                 push    r13
+.text:000000018001389C                 push    r14
+.text:000000018001389E                 push    r15
+.text:00000001800138A0                 lea     rbp, [rsp-5C0h]
+.text:00000001800138A8                 sub     rsp, 6C0h
+.text:00000001800138AF                 mov     rax, cs:__security_cookie
+.text:00000001800138B6                 xor     rax, rsp
+.text:00000001800138B9                 mov     [rbp+5F0h+var_40], rax
+.text:00000001800138C0                 mov     rax, gs:60h
+.text:00000001800138C9                 xor     r14b, r14b
+.text:00000001800138CC                 mov     rbx, rdx
+.text:00000001800138CF                 mov     [rsp+6F0h+var_678], rdx
+.text:00000001800138D4                 mov     r12, rcx
+.text:00000001800138D7                 mov     [rbp+5F0h+var_660], rcx
+.text:00000001800138DB                 mov     [rsp+6F0h+var_6B0], r14b
+.text:00000001800138E0                 test    dword ptr [rax+0BCh], 800000h
+.text:00000001800138EA                 jnz     loc_1800A0B40
+
+.text:00000001800A0B40                 mov     [rsp+6F0h+var_6B0], 1
+.text:00000001800A0B45                 call    RtlpLogExceptionDispatch
+.text:00000001800A0B4A                 nop
+.text:00000001800A0B4B                 jmp     loc_1800138F0
+
+.text:00000001800138F0                 xor     r8d, r8d
+.text:00000001800138F3                 mov     rdx, rbx
+.text:00000001800138F6                 mov     rcx, r12
+.text:00000001800138F9                 call    RtlpCallVectoredHandlers
+.text:00000001800138FE                 test    al, al
+.text:0000000180013900                 jnz     loc_1800141B8
+
+.text:00000001800141B8                 mov     r14b, 1
+.text:00000001800141BB                 jmp     loc_180013C60
+
+.text:0000000180013C60                 mov     r8d, 1
+.text:0000000180013C66                 mov     rdx, rbx
+.text:0000000180013C69                 mov     rcx, r12
+.text:0000000180013C6C                 call    RtlpCallVectoredHandlers
+.text:0000000180013C71                 movzx   eax, r14b
+.text:0000000180013C75                 mov     rcx, [rbp+5F0h+var_40]
+.text:0000000180013C7C                 xor     rcx, rsp        ; StackCookie
+.text:0000000180013C7F                 call    __security_check_cookie
+.text:0000000180013C84                 mov     rbx, [rsp+6F0h+arg_10]
+.text:0000000180013C8C                 add     rsp, 6C0h
+.text:0000000180013C93                 pop     r15
+.text:0000000180013C95                 pop     r14
+.text:0000000180013C97                 pop     r13
+.text:0000000180013C99                 pop     r12
+.text:0000000180013C9B                 pop     rdi
+.text:0000000180013C9C                 pop     rsi
+.text:0000000180013C9D                 pop     rbp
+.text:0000000180013C9E                 retn
+-------------------------------------------------------------------------------------------------
+// Win10 x32
+.text:4B2DABDD                 mov     edi, edi
+.text:4B2DABDF                 push    ebp
+.text:4B2DABE0                 mov     ebp, esp
+.text:4B2DABE2                 and     esp, 0FFFFFFF8h
+.text:4B2DABE5                 sub     esp, 7Ch
+.text:4B2DABE8                 mov     eax, ds:___security_cookie
+.text:4B2DABED                 xor     eax, esp
+.text:4B2DABEF                 mov     [esp+7Ch+var_4], eax
+.text:4B2DABF3                 mov     edx, [ebp+Context]
+.text:4B2DABF6                 push    ebx
+.text:4B2DABF7                 push    esi
+.text:4B2DABF8                 mov     esi, [ebp+ExceptionRecord]
+.text:4B2DABFB                 xor     ebx, ebx
+.text:4B2DABFD                 push    edi
+.text:4B2DABFE                 mov     [esp+88h+var_7C], edx
+.text:4B2DAC02                 mov     [esp+88h+var_75], bl
+.text:4B2DAC06                 mov     ecx, [esi+0Ch]
+.text:4B2DAC09                 call    _RtlpIsUserCallTargetBitMapCheckFault@4 ; RtlpIsUserCallTargetBitMapCheckFault(x)
+.text:4B2DAC0E                 test    al, al
+.text:4B2DAC10                 jnz     loc_4B316849
+
+.text:4B316849                 mov     ecx, [edx+0ACh] ; Address
+.text:4B31684F                 call    @RtlpHandleInvalidUserCallTarget@4 ; RtlpHandleInvalidUserCallTarget(x)
+.text:4B316854                 call    _RtlpGetUserCallTargetBitMapRet@0 ; RtlpGetUserCallTargetBitMapRet()
+.text:4B316859                 mov     edi, [esp+88h+var_7C]
+.text:4B31685D                 mov     [edi+0B8h], eax
+.text:4B316863                 mov     al, 1
+.text:4B316865                 jmp     loc_4B2DAD8A
+
+.text:4B2DAD8A                 mov     ecx, [esp+88h+var_4]
+.text:4B2DAD91                 pop     edi
+.text:4B2DAD92                 pop     esi
+.text:4B2DAD93                 pop     ebx
+.text:4B2DAD94                 xor     ecx, esp
+.text:4B2DAD96                 call    @__security_check_cookie@4 ; __security_check_cookie(x)
+.text:4B2DAD9B                 mov     esp, ebp
+.text:4B2DAD9D                 pop     ebp
+.text:4B2DAD9E                 retn    8
+-------------------------------------------------------------------------------------------------
+
+
+
+
+
+

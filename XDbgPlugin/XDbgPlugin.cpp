@@ -428,7 +428,7 @@ BOOL _stdcall ProcessCreateInjWrk(LPPROCESS_INFORMATION lpProcessInformation)
  BOOL res = FALSE;
  apo.PopArg(res);
  LoadDbgClienConfig();
- plugin_logprintf("Main thread is in suspended state");
+ plugin_logprintf("Main thread is in suspended state\n");
  return res;
 }
 //------------------------------------------------------------------------------------
@@ -582,12 +582,12 @@ BOOL WINAPI ProcWaitForDebugEvent(LPDEBUG_EVENT lpDebugEvent, DWORD dwMillisecon
       break;
      case LOAD_DLL_DEBUG_EVENT:
       {
-       // Nothing to do for now
+       DBGMSG("LOAD_DLL_DEBUG_EVENT: DllBase=%p, dwThreadId=%u",Evt->u.LoadDll.lpBaseOfDll, Evt->dwThreadId);
       }
       break;
      case UNLOAD_DLL_DEBUG_EVENT:
       {
-       // Nothing to do for now
+       DBGMSG("UNLOAD_DLL_DEBUG_EVENT: DllBase=%p, dwThreadId=%u",Evt->u.UnloadDll.lpBaseOfDll, Evt->dwThreadId);
       }
       break;
      case OUTPUT_DEBUG_STRING_EVENT:
@@ -610,6 +610,7 @@ BOOL WINAPI ProcWaitForDebugEvent(LPDEBUG_EVENT lpDebugEvent, DWORD dwMillisecon
  DbgProcID = 0;      // No DebugActiveProcessStop is called when WaitForDebugEvent is failed
  DbgIPC->EndMsg();   // Unlock shared buffer if it is still locked
  DbgIPC->Disconnect();
+ plugin_menuclear(DbgCliMenu);
  return FALSE;
 }
 //------------------------------------------------------------------------------------
@@ -915,7 +916,7 @@ NTSTATUS NTAPI ProcNtQueryInformationThread(HANDLE ThreadHandle, THREADINFOCLASS
 //------------------------------------------------------------------------------------
 NTSTATUS NTAPI ProcNtQueryVirtualMemory(HANDLE ProcessHandle, PVOID BaseAddress, MEMORY_INFORMATION_CLASS MemoryInformationClass, PVOID MemoryInformation, SIZE_T MemoryInformationLength, PSIZE_T ReturnLength)
 {                                        
- DBGMSG("ProcessHandle=%08X,BaseAddress=%p,MemoryInformationClass=%u,MemoryInformation=%p,MemoryInformationLength=%08X,ReturnLength=%p",ProcessHandle,BaseAddress,MemoryInformationClass,MemoryInformation,MemoryInformationLength,ReturnLength);
+ DBGMSG("ProcessHandle=%08X, BaseAddress=%p, MemoryInformationClass=%u, MemoryInformation=%p, MemoryInformationLength=%08X, ReturnLength=%p",ProcessHandle,BaseAddress,MemoryInformationClass,MemoryInformation,MemoryInformationLength,ReturnLength);
  if(PLogOnly || !DbgIPC || !XNI::CDbgClient::IsFakeHandle(ProcessHandle))return HookNtQueryVirtualMemory.OrigProc(ProcessHandle, BaseAddress, MemoryInformationClass, MemoryInformation, MemoryInformationLength, ReturnLength);
  SIZE_T RetLen = 0;
  NTSTATUS Status;
