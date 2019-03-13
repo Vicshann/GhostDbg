@@ -38,9 +38,6 @@
     <ClInclude Include="..\COMMON\ShMemIPC.hpp">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="..\COMMON\UniHook.h">
-      <Filter>Common</Filter>
-    </ClInclude>
     <ClInclude Include="..\COMMON\Utils.h">
       <Filter>Common</Filter>
     </ClInclude>
@@ -51,6 +48,9 @@
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="..\COMMON\GhostDbg.hpp">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\COMMON\UniHook.hpp">
       <Filter>Common</Filter>
     </ClInclude>
   </ItemGroup>

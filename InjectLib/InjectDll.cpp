@@ -410,13 +410,22 @@ bool _cdecl ProcExpDispAfter(volatile PVOID ArgA, volatile PVOID ArgB, volatile 
 // SEC_FILE             0x0800000     
 // SEC_IMAGE            0x1000000     
 // SEC_PROTECTED_IMAGE  0x2000000  
+//
+// Normal Dll map: AllocationType=00800000[MEM_ROTATE], Win32Protect=00000004[PAGE_READWRITE]    // Win10
+//
+// WinXPx32: ZwMapViewOfSection(v88, -1, (int)&v89, 0, 0, 0, (int)&v86, 1, 0, 4);
+// Win7x64: ZwMapViewOfSection(v9, -1i64, v13, 0i64, 0i64, 0i64, v12, 1, v10, 4);
+//
 NTSTATUS NTAPI ProcNtMapViewOfSection(HANDLE SectionHandle, HANDLE ProcessHandle, PVOID* BaseAddress, ULONG_PTR ZeroBits, SIZE_T CommitSize, PLARGE_INTEGER SectionOffset, PSIZE_T ViewSize, SECTION_INHERIT InheritDisposition, ULONG AllocationType, ULONG Win32Protect)
-{              
+{                
  NTSTATUS res = HookNtMapViewOfSection.OrigProc(SectionHandle,ProcessHandle,BaseAddress,ZeroBits,CommitSize,SectionOffset,ViewSize,InheritDisposition,AllocationType,Win32Protect); 
  if(!res && (ProcessHandle == NtCurrentProcess) && BaseAddress && *BaseAddress && ViewSize && *ViewSize && Dbg && Dbg->IsActive() && IsValidPEHeaderBlk(*BaseAddress, Dbg->IsMemAvailable(*BaseAddress)))    // Try to get the module`s name?
   {            
    DBGMSG("Module: Status=%08X, SectionHandle=%p, BaseAddress=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,*BaseAddress,*ViewSize,AllocationType,Win32Protect);
-   if(Dbg && Dbg->IsActive())Dbg->Report_LOAD_DLL_DEBUG_INFO(*BaseAddress);    // Events:TLS Callbacks must be disabled or xg4dbg will crash in 'cbLoadDll{ auto modInfo = ModInfoFromAddr(duint(base));}' (because it won`t check for NULL) if this mapping will be unmapped too soon
+   if(Dbg && Dbg->IsActive() && (Win32Protect == PAGE_READWRITE))   // <<< Duplicate mapping causes BPs to be set again and never removed if this module is already loaded(If this is not caused by LdrLoadDll)!
+    {
+     Dbg->Report_LOAD_DLL_DEBUG_INFO(*BaseAddress);    // Events:TLS Callbacks must be disabled or xg4dbg will crash in 'cbLoadDll{ auto modInfo = ModInfoFromAddr(duint(base));}' (because it won`t check for NULL) if this mapping will be unmapped too soon
+    }
   } 
 //   else {LOGMSG("Status=%08X, SectionHandle=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,ViewSize,AllocationType,Win32Protect);}
  return res;

@@ -706,12 +706,14 @@ NTSTATUS NTAPI ProcNtGetContextThread(HANDLE ThreadHandle, PCONTEXT Context)
  if(DbgIPC->ExchangeMsg(XNI::miGetThreadContext,XNI::mtDbgReq, &api, &apo) < 0)return STATUS_UNSUCCESSFUL;
  apo.PopArg(Status);
  apo.PopArg(*Context);
+ DBGMSG("RET: ThHndle=%p, Context=%p, DbgRegs=%u, DR7=%p, DR0=%p, DR1=%p, DR2=%p, DR3=%p",ThreadHandle,Context,bool(Context->ContextFlags & CONTEXT_DEBUG_REGISTERS), Context->Dr7,Context->Dr0,Context->Dr1,Context->Dr2,Context->Dr3);
  return Status;
 }
 //------------------------------------------------------------------------------------
 NTSTATUS NTAPI ProcNtSetContextThread(HANDLE ThreadHandle, PCONTEXT Context)
 {
- DBGMSG("ThreadHandle=%p, Context=%p",ThreadHandle,Context);
+ DBGMSG("ThreadHandle=%p, Context=%p, DbgRegs=%u, DR7=%p, DR0=%p, DR1=%p, DR2=%p, DR3=%p",ThreadHandle,Context,bool(Context->ContextFlags & CONTEXT_DEBUG_REGISTERS), Context->Dr7,Context->Dr0,Context->Dr1,Context->Dr2,Context->Dr3);
+ //            if(Context->Dr1)DebugBreak();
  if(PLogOnly || !DbgIPC || !XNI::CDbgClient::IsFakeHandle(ThreadHandle) || !ThList->IsThreadInList(0,ThreadHandle))return HookNtSetContextThread.OrigProc(ThreadHandle, Context);
  NTSTATUS Status;
  SHM::CArgPack<sizeof(CONTEXT)+sizeof(HANDLE)> api;
@@ -725,7 +727,7 @@ NTSTATUS NTAPI ProcNtSetContextThread(HANDLE ThreadHandle, PCONTEXT Context)
 //------------------------------------------------------------------------------------
 NTSTATUS NTAPI ProcNtReadVirtualMemory(HANDLE ProcessHandle, PVOID BaseAddress, PVOID Buffer, SIZE_T BufferLength, PSIZE_T ReturnLength)
 {
- DBGMSG("ProcessHandle=%p, BaseAddress=%p, Buffer=%p, BufferLength=%08X, ReturnLength=%p",ProcessHandle,BaseAddress,Buffer,BufferLength,ReturnLength);
+//// DBGMSG("ProcessHandle=%p, BaseAddress=%p, Buffer=%p, BufferLength=%08X, ReturnLength=%p",ProcessHandle,BaseAddress,Buffer,BufferLength,ReturnLength);
  if(PLogOnly || !DbgIPC || !XNI::CDbgClient::IsFakeHandle(ProcessHandle))return HookNtReadVirtualMemory.OrigProc(ProcessHandle, BaseAddress, Buffer, BufferLength, ReturnLength);
  SIZE_T RetLen = 0;
  NTSTATUS Status;
@@ -916,7 +918,7 @@ NTSTATUS NTAPI ProcNtQueryInformationThread(HANDLE ThreadHandle, THREADINFOCLASS
 //------------------------------------------------------------------------------------
 NTSTATUS NTAPI ProcNtQueryVirtualMemory(HANDLE ProcessHandle, PVOID BaseAddress, MEMORY_INFORMATION_CLASS MemoryInformationClass, PVOID MemoryInformation, SIZE_T MemoryInformationLength, PSIZE_T ReturnLength)
 {                                        
- DBGMSG("ProcessHandle=%08X, BaseAddress=%p, MemoryInformationClass=%u, MemoryInformation=%p, MemoryInformationLength=%08X, ReturnLength=%p",ProcessHandle,BaseAddress,MemoryInformationClass,MemoryInformation,MemoryInformationLength,ReturnLength);
+//// DBGMSG("ProcessHandle=%08X, BaseAddress=%p, MemoryInformationClass=%u, MemoryInformation=%p, MemoryInformationLength=%08X, ReturnLength=%p",ProcessHandle,BaseAddress,MemoryInformationClass,MemoryInformation,MemoryInformationLength,ReturnLength);
  if(PLogOnly || !DbgIPC || !XNI::CDbgClient::IsFakeHandle(ProcessHandle))return HookNtQueryVirtualMemory.OrigProc(ProcessHandle, BaseAddress, MemoryInformationClass, MemoryInformation, MemoryInformationLength, ReturnLength);
  SIZE_T RetLen = 0;
  NTSTATUS Status;

@@ -5,7 +5,7 @@
 #include "Utils.h"
 #include "CompileTime.hpp"
 #include "json.h"
-#include "UniHook.h"
+#include "UniHook.hpp"
 #include "FormatPE.h"
 #include "GhostDbg.hpp"
 #include "InjDllLdr.hpp"

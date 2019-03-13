@@ -359,7 +359,7 @@ copy /Y "$(OutDir)$(TargetName)$(TargetExt)" "$(SolutionDir)BUILD\RELEASE\$(Solu
     <ClInclude Include="..\COMMON\MiniString.h" />
     <ClInclude Include="..\COMMON\ShMemIPC.hpp" />
     <ClInclude Include="..\COMMON\ThirdParty\ntdll\ntdll.h" />
-    <ClInclude Include="..\COMMON\UniHook.h" />
+    <ClInclude Include="..\COMMON\UniHook.hpp" />
     <ClInclude Include="..\COMMON\Utils.h" />
     <ClInclude Include="InjectDll.h" />
   </ItemGroup>

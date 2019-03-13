@@ -4,7 +4,7 @@
 
 #include <intrin.h>
 #include "Utils.h"
-#include "UniHook.h"
+#include "UniHook.hpp"
 #include "FormatPE.h"
 #include "GhostDbg.hpp"
 #include "InjDllLdr.hpp"
@@ -25,16 +25,15 @@
 
 //====================================================================================
 
-
 void _stdcall LoadConfiguration(void);
 void _stdcall SaveConfiguration(void);
 int  _stdcall EnablePlugin(void);
 int  _stdcall DisablePlugin(void);
 
-int _stdcall LoadDbgClienConfig(void);
-int _stdcall SetSingleConfig(UINT CfgID, UINT CfgType, PVOID CfgAddr);
+int  _stdcall LoadDbgClienConfig(void);
+int  _stdcall SetSingleConfig(UINT CfgID, UINT CfgType, PVOID CfgAddr);
 
-DWORD WINAPI IPCQueueThread(LPVOID lpThreadParameter);
+DWORD WINAPI  IPCQueueThread(LPVOID lpThreadParameter);
 
 //------------------------------------------------------------------------------------
 BOOL  WINAPI ProcDebugActiveProcess(DWORD dwProcessId);
