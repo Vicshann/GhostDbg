@@ -24,6 +24,9 @@
     <ClCompile Include="..\COMMON\Utils.cpp">
       <Filter>Common</Filter>
     </ClCompile>
+    <ClCompile Include="..\COMMON\RTL\gcvt.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="InjectDll.h">

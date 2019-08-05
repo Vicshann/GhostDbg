@@ -1,0 +1,88 @@
+# Function Description
+#### ->Hide PEB (overloaded program is in effect)
+    Hide PEB and dispose of the following features
+- peb.BeingDebugged & wow64.peb64.BeingDebugged
+- peb.NtGlobalFlag & wow64.peb64.NtGlobalFlag
+- peb.processHeap.HeapFlags & wow64.peb64.processHeap.HeapFlags
+- peb.processHeap.ForceFlags & wow64.peb64.processHeap.ForceFlags
+  
+#### -> Change Caption (Restart debugger is in effect)
+    The function of the powerless spit, IMHO, all the anti-debugging with features are not safe.
+    This function is to change the debugger window title, menu name to prevent the primary school's enumeration window and menu detection.
+
+#### -> Hide Process (reloaded program is in effect)
+    Hidden process function, only for the process being debugged, in NtQuerySystemInformation broken chain
+
+#### -> Fake ParentProcess (overloaded program is in effect)
+    Modify the parent process identifier, the process of debugging The parent process will become explorer.exe. If the pid of explorer.exe is not obtained, the parent process will be changed to 4.
+
+#### -> Drag Attach (Restart debugger is in effect)
+    Feel this is the most powerful update, just drag the icon in the upper left corner of the debugger to the target window to attach the process.
+
+#### ->Hook *ZwFunctions (overloaded program is in effect)
+    Hook Zw series function
+    There are too many things to deal with, the following Nt function
+
+##### NtQuerySystemInformation
+- SystemKernelDebuggerInformation
+- SystemProcessInformation
+- SystemHandleInformation
+
+##### NtClose
+- invalid Handle
+
+##### NtQueryInformationProcess
+- ProcessBasicInformation
+- ProcessDebugPort
+- ProcessDebugObjectHandle
+- ProcessDebugFlags
+
+##### NtSetInformationThread
+- ThreadHideFromDebugger
+
+##### NtDuplicateObject
+
+##### NtQueryObject
+- ObjectTypesInformation -> DebugObject
+
+##### NtYieldExecution
+- return STATUS_NO_YIELD_PERFORMED
+
+#### -> Remove DebugProvileges (overloaded program is in effect)
+    Remove debug permissions for the debug process
+    Because the process does not have the SeDebugPrivilege privilege by default, this permission is inherited from the debugger during debugging, so someone can take advantage of this. It is not recommended to open by default
+
+#### -> VMP 3.1(above) (overloaded program is in effect)
+    Anti-debugging with VMP3.1 or higher
+    VMProtect 3.1 version has a major update. Starting from this version, directly simulate Wow64 to call syscall into the kernel. The 32-bit system also directly calls the privileged instruction systnter to enter the kernel. The query detects ProcessDebugObjectHandle, so there is almost no way to intercept it at the application layer.
+    I used a small trick to bypass his detection here.
+
+#### -> Protect Drx (overloaded program is in effect)
+    Protect hardware breakpoints
+- ZwSetContextThread
+- ZwGetContextThread
+- KiUserExceptionDispatcher ->
+- if Wow64PrepareForException Then -> ntdll64.NtQuery/SetInformationThread
+- else //x64mode
+- RtlDispatchException
+- RtlRestoreContext
+
+#### ->Hook SSDT (Restart debugger is in effect)
+    With this feature, all user computers have to go to PatchGuard, which is very cumbersome and will be added when necessary.
+
+#### ->Hook ShadowSSDT (Restart debugger is in effect)
+    Ibid.
+
+#### ->Dbg Val1dAccessMask (Restart debugger takes effect)
+    This feature is specifically for those who mimic TP anti-debugging to clear your DebugObject->ValidAccessMask, who gives you such a large power to globally clear the debugging object of my machine?
+    The phenomenon is that your debugger cannot be dragged into any program.
+
+#### ->bypass ObjectHook (Restart debugger takes effect)
+    Bypassing the object hook, this protection is used most on 64-bit systems, and it can filter out the permissions of your open process.
+    For example, you can't read and write memory to the target process. Turn this feature on to bypass this protection. But it seems that the PG will be triggered under the WIN10 system.
+
+# [SharpOD x64 v0.6 update]
+- Complete rewrite architecture and code, not in conflict with ScyllaHide, PhantOm, and lower level than them.
+- Support for all 64-bit systems, not hardcoded with SSDT Index
+- Add the top left corner icon to drag additional process features
+- Support x32dbg, x64dbg

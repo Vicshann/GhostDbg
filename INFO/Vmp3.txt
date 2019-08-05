@@ -1,0 +1,25 @@
+Call IsDebuggerPresent to determine that the return value eax==1 is debugged, and eax==0 is not debugged.
+
+CheckRemoteDebuggerPresent, determine whether the buffer return value is 0 or 1, 1 is debugged, 0 is not debugged.
+
+NtQueryInformationProcess, ProcessInfoClass=0x1E to get the debug handle, to determine whether it is debugged, the debug handle returns 0 and the return value of eax is 0xC0000353
+
+NtSetInformationThread, ThreadInfoClass=0x11, this is not to detect debugging, but to set the debugging information to the debugger, you can directly change 0x11 to 0x3 or other values.
+
+ZwQuerySystemInformation, SystemInfoClass=0x23 (MACRO: SystemKernelDebuggerInformation), the return value is a 2-byte bool value, set to 0.
+
+ZwQuerySystemInformation, SystemInfoClass=0xB (MACRO: SystemModuleInformation), will go through the kernel module, and then judge, the first time is to obtain the buffer length that needs to be stored, the second time is to actually get the information, as long as the buffer is set to 0, Debugging is not detected. As for the location of the buffer, the LocalAlloc application space is used for storage after the first call.
+
+CloseHandle anti-debugging, if it is debugged, then the KiRaiseUserExceptionDispatcher function will be called, go the exception handling process; if it is not debugged, it will not go to the exception process.
+
+Detecting hardware breakpoints is handled by SEH exceptions
+First, in the SEH chain, the next software breakpoint for the SEH header of the current module.
+
+Then modify the Dr0, Dr1, Dr2, Dr3, Dr6, Dr7 debug registers to 0.
+
+If it is the GetpRrocessAffinityMask function call when it comes to CALL eax, the anti-debug has passed.
+
+information can be tracked here at VmCall ‘’CALL eax‘’
+
+In addition, after ZwQuerySystemInformation[SystemInformationClass::SystemModuleInformation] gets the list of system modules, the module name and the decrypted strings "sice.sys", "siwvid.sys", "ntice.sys", "iceext.sys", and "syser" .sys" for comparison to complete the test.
+The above is the debugger detection bypass of VMP3.0.0-3.2.0

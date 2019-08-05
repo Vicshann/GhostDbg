@@ -346,6 +346,7 @@ copy /Y "$(OutDir)$(TargetName)$(TargetExt)" "$(SolutionDir)BUILD\RELEASE\$(Solu
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\COMMON\RTL\gcvt.cpp" />
     <ClCompile Include="..\COMMON\Utils.cpp" />
     <ClCompile Include="InjectDll.cpp" />
   </ItemGroup>
