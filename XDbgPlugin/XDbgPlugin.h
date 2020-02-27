@@ -10,7 +10,7 @@
 #include "InjDllLdr.hpp"
 
 //====================================================================================
-#define CFGSECNAME "Parameters"
+#define CFGSECNAME L"Parameters"
 #define XDBGPLG_VER		 1
 #define XDBGPLG_NAME     "GhostDbg"
 #define XDBGPLG_BUILD    __DATE__ " - " __TIME__

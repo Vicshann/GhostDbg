@@ -12,8 +12,8 @@
 #include "GhostDbg.hpp"
 
 //====================================================================================
-#define CFGFILE    "InjLib.jsn"
-#define LOGFILE    " - InjLib.log"
+#define CFGFILE    ".InjLib.jsn"
+#define LOGFILE    ".InjLib.log"
 
 //====================================================================================
 void _stdcall LoadConfiguration(void);
@@ -28,7 +28,7 @@ bool _cdecl ProcExpDispAfter(volatile PVOID ArgA, volatile PVOID ArgB, volatile 
 //__declspec(noreturn) void _fastcall ProcKiUserExceptionDispatcher(void);
 //__declspec(noreturn) void NTAPI ProcLdrInitializeThunk(PVOID ArgA, PVOID ArgB, PVOID ArgC, PVOID ArgD);
 NTSTATUS NTAPI ProcNtContinue(PCONTEXT ContextRecord, BOOLEAN TestAlert);
-NTSTATUS NTAPI ProcNtTerminateProcess(HANDLE ProcessHandle, NTSTATUS ExitStatus);
+//NTSTATUS NTAPI ProcNtTerminateProcess(HANDLE ProcessHandle, NTSTATUS ExitStatus);
 NTSTATUS NTAPI ProcNtTerminateThread(HANDLE ThreadHandle, NTSTATUS ExitStatus);
 NTSTATUS NTAPI ProcNtGetContextThread(HANDLE ThreadHandle, PCONTEXT Context);
 NTSTATUS NTAPI ProcNtSetContextThread(HANDLE ThreadHandle, PCONTEXT Context);

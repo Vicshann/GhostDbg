@@ -81,9 +81,9 @@ int  (_cdecl* plugin_menuaddentry)(int hMenu, int entry, const char* title);
 void (_cdecl* plugin_menuseticon)(int hMenu, const ICONDATA* icon);
 void (_cdecl* plugin_logprintf)(const char* format, ...);
 
-BYTE  StartUpDir[MAX_PATH];
-BYTE  CfgFilePath[MAX_PATH];
-BYTE  WorkFolder[MAX_PATH];
+wchar_t StartUpDir[MAX_PATH];
+wchar_t CfgFilePath[MAX_PATH];
+wchar_t WorkFolder[MAX_PATH];
 
 //===========================================================================
 BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved) 
@@ -93,22 +93,22 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
    case DLL_PROCESS_ATTACH:
     {    
      hInst = hModule;
-     GetModuleFileName((HMODULE)hModule,(LPSTR)&StartUpDir,sizeof(StartUpDir));        
-	 lstrcpyA((LPSTR)&WorkFolder, (LPSTR)&StartUpDir);
+     GetModuleFileNameW((HMODULE)hModule,StartUpDir,countof(StartUpDir));        
+	 NSTR::StrCopy(WorkFolder, StartUpDir);
 
 #ifndef NOLOG
-     lstrcpyA((LPSTR)&LogFilePath,(LPSTR)&WorkFolder);
-     lstrcpyA(GetFileExt((LPSTR)&LogFilePath),"log");
+     NSTR::StrCopy(LogFilePath, WorkFolder);
+     NSTR::StrCopy(GetFileExt(LogFilePath), L"log");
 #endif
-     lstrcpyA((LPSTR)&CfgFilePath,(LPSTR)&WorkFolder);
-     lstrcpyA(GetFileExt((LPSTR)&CfgFilePath),"ini");
+     NSTR::StrCopy(CfgFilePath, WorkFolder);
+     NSTR::StrCopy(GetFileExt(CfgFilePath), L"ini");
 	
      LoadConfiguration();	
 	 if(LogMode & lmCons){AllocConsole();/*SetWinConsoleSizes(1000, 500, 1000, 500);*/}
-	 LOGMSG("Starting up... (Time=%08X), Owner='%s'", (DWORD)GetTime64(),(LPSTR)&StartUpDir);	
-     TrimFilePath((LPSTR)&StartUpDir);
-     LOGMSG("WorkFolder: %s", (LPSTR)&WorkFolder);
-     LOGMSG("StartUpDir: %s", (LPSTR)&StartUpDir);  
+	 LOGMSG("Starting up... (Time=%08X), Owner='%ls'", (DWORD)GetTime64(),&StartUpDir);	
+     TrimFilePath(StartUpDir);
+     LOGMSG("WorkFolder: %ls", &WorkFolder);
+     LOGMSG("StartUpDir: %ls", &StartUpDir);  
     }
      break;									
    case DLL_THREAD_ATTACH:
@@ -125,24 +125,24 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
 //====================================================================================
 void _stdcall LoadConfiguration(void)
 {                  
- LogMode                = RefreshINIValueInt(CFGSECNAME,"LogMode",   LogMode,  (LPSTR)&CfgFilePath);
- PLogOnly               = RefreshINIValueInt(CFGSECNAME,"PLogOnly",  PLogOnly, (LPSTR)&CfgFilePath);
- PEnabled               = RefreshINIValueInt(CFGSECNAME,"PEnabled",  PEnabled, (LPSTR)&CfgFilePath);
- AllowInject            = RefreshINIValueInt(CFGSECNAME,"AllowInject",  AllowInject, (LPSTR)&CfgFilePath); 
- AllowInjNew            = RefreshINIValueInt(CFGSECNAME,"AllowInjNew",  AllowInjNew, (LPSTR)&CfgFilePath);     
- InjFlags               = RefreshINIValueInt(CFGSECNAME,"InjectFlags",  InjFlags, (LPSTR)&CfgFilePath); 
- WaitForInj             = RefreshINIValueInt(CFGSECNAME,"WaitForInj",  WaitForInj, (LPSTR)&CfgFilePath); 
+ LogMode       = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"LogMode",   LogMode,  CfgFilePath);
+ PLogOnly      = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"PLogOnly",  PLogOnly, CfgFilePath);
+ PEnabled      = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"PEnabled",  PEnabled, CfgFilePath);
+ AllowInject   = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"AllowInject",  AllowInject, CfgFilePath); 
+ AllowInjNew   = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"AllowInjNew",  AllowInjNew, CfgFilePath);     
+ InjFlags      = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"InjectFlags",  InjFlags, CfgFilePath); 
+ WaitForInj    = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"WaitForInj",  WaitForInj, CfgFilePath); 
 }
 //------------------------------------------------------------------------------------
 void _stdcall SaveConfiguration(void)
 {
- SetINIValueInt(CFGSECNAME, "LogMode", LogMode, (LPSTR)&CfgFilePath);
- SetINIValueInt(CFGSECNAME, "PLogOnly", PLogOnly, (LPSTR)&CfgFilePath);
- SetINIValueInt(CFGSECNAME, "PEnabled", PEnabled, (LPSTR)&CfgFilePath);
- SetINIValueInt(CFGSECNAME, "AllowInject", AllowInject, (LPSTR)&CfgFilePath);
- SetINIValueInt(CFGSECNAME, "AllowInjNew", AllowInjNew, (LPSTR)&CfgFilePath);
- SetINIValueInt(CFGSECNAME, "InjectFlags", InjFlags, (LPSTR)&CfgFilePath);
- SetINIValueInt(CFGSECNAME, "WaitForInj", WaitForInj, (LPSTR)&CfgFilePath);
+ INISetValueInt<PWSTR>(CFGSECNAME, L"LogMode", LogMode, CfgFilePath);
+ INISetValueInt<PWSTR>(CFGSECNAME, L"PLogOnly", PLogOnly, CfgFilePath);
+ INISetValueInt<PWSTR>(CFGSECNAME, L"PEnabled", PEnabled, CfgFilePath);
+ INISetValueInt<PWSTR>(CFGSECNAME, L"AllowInject", AllowInject, CfgFilePath);
+ INISetValueInt<PWSTR>(CFGSECNAME, L"AllowInjNew", AllowInjNew, CfgFilePath);
+ INISetValueInt<PWSTR>(CFGSECNAME, L"InjectFlags", InjFlags, CfgFilePath);
+ INISetValueInt<PWSTR>(CFGSECNAME, L"WaitForInj", WaitForInj, CfgFilePath);
 }
 //------------------------------------------------------------------------------------
 void _cdecl MenuHandler(CBTYPE Type, PLUG_CB_MENUENTRY *info)
@@ -375,13 +375,13 @@ int _stdcall SetSingleConfig(UINT CfgID, UINT CfgType, PVOID CfgAddr)
 int _stdcall InjectProcess(HANDLE hProcess, DWORD ProcessID)
 {
  CArr<BYTE> DllData;
- BYTE DllPath[MAX_PATH];
+ wchar_t DllPath[MAX_PATH];
  UINT Flags   = InjFlags|InjLdr::mfRawMod|fmCryHdr|fmCryImp|fmCryExp|fmCryRes;    // TODO: Inject method to cfg (Separated)
  UINT ResSize = 0;
  PVOID InjLib = NULL;
- lstrcpyA((LPSTR)&DllPath, (LPSTR)&StartUpDir);
- lstrcatA((LPSTR)&DllPath,"injlib.dll");        // Store this name in some global definition?
- HANDLE hFile = CreateFileA((LPSTR)&DllPath,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+ NSTR::StrCopy(DllPath, StartUpDir);
+ NSTR::StrCnat(DllPath, L"injlib.dll");        // Store this name in some global definition?
+ HANDLE hFile = CreateFileW(DllPath,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
  if(hFile != INVALID_HANDLE_VALUE)
   {
    DWORD Result   = 0;
@@ -390,8 +390,8 @@ int _stdcall InjectProcess(HANDLE hProcess, DWORD ProcessID)
    if(ResSize)ReadFile(hFile,DllData.Data(),ResSize,&Result,NULL);
    CloseHandle(hFile);
    InjLib = DllData.Data();
-   DBGMSG("InjLib loaded from file: %s",(LPSTR)&DllPath);
-   plugin_logprintf("InjLib loaded from file: %s\n",(LPSTR)&DllPath);
+   DBGMSG("InjLib loaded from file: %ls",&DllPath);
+   plugin_logprintf("InjLib loaded from file: %ls\n",&DllPath);
   }
    else InjLib = GetResource(hInst, "InjLib", RT_RCDATA, &ResSize);
  if(!InjLib || !ResSize){DBGMSG("No InjLib found!"); return -1;}
@@ -547,7 +547,7 @@ BOOL WINAPI ProcWaitForDebugEvent(LPDEBUG_EVENT lpDebugEvent, DWORD dwMillisecon
    SHM::CMessageIPC::SMsgHdr* Cmd = DbgIPC->GetMsg();
    if(!Cmd)continue;       // Timeout and still no message
 //   DBGMSG("MsgType=%04X, MsgID=%04X, DataID=%08X, Sequence=%08X, DataSize=%08X",Cmd->MsgType,Cmd->MsgID,Cmd->DataID,Cmd->Sequence,Cmd->DataSize);   // DISABLED: Other threaads will spam IPC with ReadVirtualMemory requests no mattter which tab is opened
-   if((Cmd->MsgType != XNI::mtDbgRsp)||(Cmd->MsgID != XNI::miWaitForDebugEvent)||(Cmd->DataSize < sizeof(XNI::DbgEvtEx)))continue;   // Not a Response (All debug events are sent as Response without Request)
+   if((Cmd->MsgType != XNI::mtDbgRsp)||(Cmd->MsgID != XNI::miWaitForDebugEvent)||(Cmd->DataSize < sizeof(XNI::DbgEvtEx)))continue;   // Not a Response (All debug events are sent as Response without a Request)
    XNI::DbgEvtEx* Evt = (XNI::DbgEvtEx*)&Cmd->Data;
    DBGMSG("Code=%u, ThreadID=%08X(%u)",Evt->dwDebugEventCode,Evt->dwThreadId,Evt->dwThreadId);
    switch(Evt->dwDebugEventCode)
@@ -558,24 +558,26 @@ BOOL WINAPI ProcWaitForDebugEvent(LPDEBUG_EVENT lpDebugEvent, DWORD dwMillisecon
       }
       break;
      case CREATE_THREAD_DEBUG_EVENT:
-      {
-       ThList->AddThreadToList(Evt->dwThreadId,Evt->u.CreateThread.hThread, false);    // NOTE: Watch for CloseHandle for thread handles
+      {                              
        DBGMSG("CREATE_THREAD_DEBUG_EVENT: hThread=%08X, dwThreadId=%u",Evt->u.CreateThread.hThread,Evt->dwThreadId);
+       ThList->AddThreadToList((TEB*)Evt->u.CreateThread.lpThreadLocalBase, Evt->dwThreadId, Evt->u.CreateThread.hThread, false);    // NOTE: Watch for CloseHandle for thread handles
       }
       break;
      case CREATE_PROCESS_DEBUG_EVENT:
       {                             
-       ThList->AddThreadToList(Evt->dwThreadId,Evt->u.CreateProcessInfo.hThread, false);   // This fake handle is an encoded index in client`s thread list
        DBGMSG("CREATE_PROCESS_DEBUG_EVENT: hProcess=%08X, hThread=%08X, dwThreadId=%u",Evt->u.CreateProcessInfo.hProcess,Evt->u.CreateProcessInfo.hThread,Evt->dwThreadId);
+       ThList->AddThreadToList((TEB*)Evt->u.CreateThread.lpThreadLocalBase, Evt->dwThreadId, Evt->u.CreateProcessInfo.hThread, false);   // This fake handle is an encoded index in client`s thread list
       }
       break;
      case EXIT_THREAD_DEBUG_EVENT:
       {
-       ThList->RemoveThreadFromList(Evt->dwThreadId);
+       DBGMSG("EXIT_THREAD_DEBUG_EVENT: dwThreadId=%u, dwExitCode=%u",Evt->dwThreadId,Evt->u.ExitThread.dwExitCode);
+       ThList->RemoveThreadFromList(Evt->dwThreadId);      
       }
       break;
      case EXIT_PROCESS_DEBUG_EVENT:
       {
+       DBGMSG("EXIT_PROCESS_DEBUG_EVENT: dwProcessId=%u, dwExitCode=%u",Evt->dwProcessId,Evt->u.ExitProcess.dwExitCode);
        if(DbgProcID == Evt->dwProcessId)DbgProcID = 0;
        if(DbgIPC)DbgIPC->Disconnect();
       }
@@ -604,11 +606,11 @@ BOOL WINAPI ProcWaitForDebugEvent(LPDEBUG_EVENT lpDebugEvent, DWORD dwMillisecon
      default: {DBGMSG("Unknown DebugEventCode: %u",Evt->dwDebugEventCode);}
     }
    memcpy(lpDebugEvent,&Cmd->Data,sizeof(DEBUG_EVENT));
-   DbgIPC->EndMsg();   // Unlock shared buffer
+   DbgIPC->EndMsg(false);   // Unlock shared buffer   // Only single events can be removed because they read in order of arrival     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
    return TRUE;        // Other events will wait untiiiil another call to WaitForDebugEvent
   }
- DbgProcID = 0;      // No DebugActiveProcessStop is called when WaitForDebugEvent is failed
- DbgIPC->EndMsg();   // Unlock shared buffer if it is still locked
+ DbgProcID = 0;          // No DebugActiveProcessStop is called when WaitForDebugEvent is failed
+ DbgIPC->EndMsg(false);   // Unlock shared buffer if it is still locked    // <<<<<<<<<<<<<<<<<<< FALSE for now!
  DbgIPC->Disconnect();
  plugin_menuclear(DbgCliMenu);
  return FALSE;
@@ -623,16 +625,16 @@ BOOL WINAPI ProcDebugActiveProcess(DWORD dwProcessId)     // Thes will make a de
   {
    if(AllowInject)
     {
-     if(InjectProcess(NULL, dwProcessId) < 0)return FALSE;    
+     if(InjectProcess(NULL, dwProcessId) < 0){DBGMSG("Failed to inject!"); return FALSE;}    
     }
      else return FALSE;
   }
- if(DbgIPC->Connect(dwProcessId, 0, true) < 0)return FALSE;
+ if(DbgIPC->Connect(dwProcessId, 0, true) < 0){DBGMSG("Failed to connect!"); return FALSE;}
  DbgProcID = dwProcessId;
  SHM::CArgPack<> api;
  SHM::CArgPack<> apo;
  api.PushArg(dwProcessId);
- if(DbgIPC->ExchangeMsg(XNI::miDebugActiveProcess,XNI::mtDbgReq, &api, &apo) < 0)return FALSE;
+ if(DbgIPC->ExchangeMsg(XNI::miDebugActiveProcess,XNI::mtDbgReq, &api, &apo) < 0){DBGMSG("Failed to communicate!"); return FALSE;}
  BOOL res = FALSE;
  apo.PopArg(res);
  LoadDbgClienConfig();
@@ -864,7 +866,7 @@ NTSTATUS NTAPI ProcNtQueryInformationProcess(HANDLE ProcessHandle, PROCESSINFOCL
  apo.PopArg(RetLen);
  apo.PopBlk(ProcessInformationLength,ProcessInformation);    // Full buffer exchange
  if(ReturnLength)*ReturnLength = RetLen;
- if(Status || !RetLen)return Status;
+ if(Status || !RetLen){DBGMSG("Failed with status: %08X!",Status); return Status;}
  switch(ProcessInformationClass)            
   {
    case ProcessBasicInformation:
@@ -879,7 +881,7 @@ NTSTATUS NTAPI ProcNtQueryInformationProcess(HANDLE ProcessHandle, PROCESSINFOCL
     break;
 
    default:
-       DBGMSG("Untested information class!");
+       DBGMSG("Untested information class: %u!",ProcessInformationClass);
 //       DebugBreak();
   }                   
  return Status;
@@ -901,16 +903,17 @@ NTSTATUS NTAPI ProcNtQueryInformationThread(HANDLE ThreadHandle, THREADINFOCLASS
  apo.PopArg(RetLen);
  apo.PopBlk(ThreadInformationLength,ThreadInformation);    // Full buffer exchange
  if(ReturnLength)*ReturnLength = RetLen;
- if(Status || !RetLen)return Status;
+ if(Status || !RetLen){DBGMSG("Failed with status: %08X!",Status); return Status;}
  switch(ThreadInformationClass)            
   {
    case ThreadBasicInformation:
+   case ThreadSuspendCount:
    case ThreadCycleTime:
    case ThreadTimes:
     break;
 
    default:
-       DBGMSG("Untested information class!");
+       DBGMSG("Untested information class: %u!",ThreadInformationClass);
 //       DebugBreak();
   }                   
  return Status;
@@ -918,7 +921,7 @@ NTSTATUS NTAPI ProcNtQueryInformationThread(HANDLE ThreadHandle, THREADINFOCLASS
 //------------------------------------------------------------------------------------
 NTSTATUS NTAPI ProcNtQueryVirtualMemory(HANDLE ProcessHandle, PVOID BaseAddress, MEMORY_INFORMATION_CLASS MemoryInformationClass, PVOID MemoryInformation, SIZE_T MemoryInformationLength, PSIZE_T ReturnLength)
 {                                        
-//// DBGMSG("ProcessHandle=%08X, BaseAddress=%p, MemoryInformationClass=%u, MemoryInformation=%p, MemoryInformationLength=%08X, ReturnLength=%p",ProcessHandle,BaseAddress,MemoryInformationClass,MemoryInformation,MemoryInformationLength,ReturnLength);
+// DBGMSG("ProcessHandle=%08X, BaseAddress=%p, MemoryInformationClass=%u, MemoryInformation=%p, MemoryInformationLength=%08X, ReturnLength=%p",ProcessHandle,BaseAddress,MemoryInformationClass,MemoryInformation,MemoryInformationLength,ReturnLength);
  if(PLogOnly || !DbgIPC || !XNI::CDbgClient::IsFakeHandle(ProcessHandle))return HookNtQueryVirtualMemory.OrigProc(ProcessHandle, BaseAddress, MemoryInformationClass, MemoryInformation, MemoryInformationLength, ReturnLength);
  SIZE_T RetLen = 0;
  NTSTATUS Status;
@@ -933,7 +936,7 @@ NTSTATUS NTAPI ProcNtQueryVirtualMemory(HANDLE ProcessHandle, PVOID BaseAddress,
  apo.PopArg(RetLen);
  apo.PopBlk(MemoryInformationLength,MemoryInformation);    // Full buffer exchange
  if(ReturnLength)*ReturnLength = RetLen;
- if(Status || !RetLen)return Status;
+ if(Status || !RetLen){DBGMSG("Failed with status: %08X!",Status); return Status;}
  switch(MemoryInformationClass)            
   {
    case MemoryBasicInformation:
@@ -946,7 +949,7 @@ NTSTATUS NTAPI ProcNtQueryVirtualMemory(HANDLE ProcessHandle, PVOID BaseAddress,
     break;
           
    default:
-       DBGMSG("Untested information class!");
+       DBGMSG("Untested information class: %u!",MemoryInformationClass);
 //       DebugBreak();
   }                   
  return Status;

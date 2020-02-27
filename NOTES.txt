@@ -31,3 +31,8 @@ ISSUES:
  Software breakpoints is very dangerous to set
  Because of SEH recursion a DBG context protection is not used(Find a way to mark a thread with RefCtr)
 //-----------------------------------------------------------------------------------------------------------------
+How DebugActiveProcess works:
+  1) Suspends all process` threads
+  2) Creates a remote thread at ntdll.dll:DbgUiRemoteBreakin
+  3) Suspends all other process` threads again (Including at DbgUiRemoteBreakin)   // Suspend count 1,2,2,2,...
+
