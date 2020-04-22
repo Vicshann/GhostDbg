@@ -8,7 +8,7 @@
 #endif
 
 //list structure (and C++ wrapper)
-#include "bridgelist.h"
+//#include "bridgelist.h"    // Disabled because brings in C runtime (vector)
 
 //default structure alignments forced
 #ifdef _WIN64

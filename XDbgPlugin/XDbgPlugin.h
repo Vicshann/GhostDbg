@@ -1,25 +1,40 @@
 
 #pragma once
- 
+/*
+  Copyright (c) 2020 Victor Sheinmann, Vicshann@gmail.com
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+  to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+  and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+  WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
+*/ 
 
 #include <intrin.h>
 #include "Utils.h"
 #include "UniHook.hpp"
-#include "FormatPE.h"
+#include "NtDllEx.hpp"
 #include "GhostDbg.hpp"
 #include "InjDllLdr.hpp"
 
 //====================================================================================
 #define CFGSECNAME L"Parameters"
-#define XDBGPLG_VER		 1
+#define XDBGPLG_VERH		2
+#define XDBGPLG_VERL		0
 #define XDBGPLG_NAME     "GhostDbg"
 #define XDBGPLG_BUILD    __DATE__ " - " __TIME__
 
-#define MENU_ID_ENABLED		1
-#define MENU_ID_ABOUT		2
-#define MENU_ID_CHK_CANINJ  3
+#define MENU_ID_ENABLED		  1
+#define MENU_ID_ABOUT		  2
+#define MENU_ID_CHK_CANINJ    3
 #define MENU_ID_CHK_CANINJNEW 4
-#define MENU_ID_DBGCLIENT   16
+#define MENU_ID_SUSPPROCESS   5
+#define MENU_ID_USERAWTHREADS 6
+#define MENU_ID_DBGCLIENT     16
 
 //====================================================================================
 
@@ -41,7 +56,7 @@ BOOL  WINAPI ProcDebugActiveProcessStop(DWORD dwProcessId);
 BOOL  WINAPI ProcWaitForDebugEvent(LPDEBUG_EVENT lpDebugEvent, DWORD dwMilliseconds);
 BOOL  WINAPI ProcContinueDebugEvent(DWORD dwProcessId, DWORD dwThreadId, DWORD dwContinueStatus);
 BOOL  WINAPI ProcDebugBreakProcess(HANDLE Process);
-BOOL  WINAPI ProcTerminateProcess(HANDLE hProcess, UINT uExitCode);
+BOOL  WINAPI ProcIsWow64Process(HANDLE hProcess, PBOOL Wow64Process);
 BOOL  WINAPI ProcCreateProcessA(LPCSTR lpApplicationName,LPSTR lpCommandLine,LPSECURITY_ATTRIBUTES lpProcessAttributes,LPSECURITY_ATTRIBUTES lpThreadAttributes,BOOL bInheritHandles,DWORD dwCreationFlags,LPVOID lpEnvironment,LPCSTR lpCurrentDirectory,LPSTARTUPINFOA lpStartupInfo,LPPROCESS_INFORMATION lpProcessInformation);
 BOOL  WINAPI ProcCreateProcessW(LPCWSTR lpApplicationName,LPWSTR lpCommandLine,LPSECURITY_ATTRIBUTES lpProcessAttributes,LPSECURITY_ATTRIBUTES lpThreadAttributes,BOOL bInheritHandles,DWORD dwCreationFlags,LPVOID lpEnvironment,LPCWSTR lpCurrentDirectory,LPSTARTUPINFOW lpStartupInfo,LPPROCESS_INFORMATION lpProcessInformation);
 
@@ -57,7 +72,8 @@ NTSTATUS NTAPI ProcNtGetContextThread(HANDLE ThreadHandle, PCONTEXT Context);
 NTSTATUS NTAPI ProcNtSetContextThread(HANDLE ThreadHandle, PCONTEXT Context);
 NTSTATUS NTAPI ProcNtReadVirtualMemory(HANDLE ProcessHandle, PVOID BaseAddress, PVOID Buffer, SIZE_T BufferLength, PSIZE_T ReturnLength);
 NTSTATUS NTAPI ProcNtWriteVirtualMemory(HANDLE ProcessHandle, PVOID BaseAddress, PVOID Buffer, SIZE_T BufferLength, PSIZE_T ReturnLength);
-NTSTATUS NTAPI ProcNtTerminateThread(HANDLE ThreadHandle, NTSTATUS ExitStatus);;
+NTSTATUS NTAPI ProcNtTerminateProcess(HANDLE ProcessHandle, NTSTATUS ExitStatus);
+NTSTATUS NTAPI ProcNtTerminateThread(HANDLE ThreadHandle, NTSTATUS ExitStatus);
 NTSTATUS NTAPI ProcNtSuspendThread(HANDLE ThreadHandle, PULONG PreviousSuspendCount);
 NTSTATUS NTAPI ProcNtResumeThread(HANDLE ThreadHandle, PULONG PreviousSuspendCount);
 NTSTATUS NTAPI ProcNtClose(HANDLE Handle);

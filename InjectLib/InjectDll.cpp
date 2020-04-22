@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2018 Victor Sheinmann, Vicshann@gmail.com
+  Copyright (c) 2020 Victor Sheinmann, Vicshann@gmail.com
 
   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
   to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
@@ -14,6 +14,13 @@
 
 #include "InjectDll.h" 
 
+//#pragma comment(linker,"/MERGE:.rdata=.text")    // .idata can be only there
+//#pragma comment(linker,"/MERGE:.data=.text") 
+//#pragma comment(linker,"/MERGE:.idata=.text")
+//#pragma comment(linker, "/SECTION:.text,EWR")    // .text; .bss; .pdata; .idata; .reloc  // GhostDbg can cut off after BSS (It does imports and relocs and PDATA is unused)
+#pragma comment(linker,"/MERGE:.data=.rdata")      // Now: .text; .bss; .rdata; .pdata; .reloc   // rdata will not be writable - fixed manually for a separate DLL release
+//#pragma comment(linker,"/MERGE:.text=.rdata")    // Creates .xdata section 
+//#pragma comment(linker, "/SECTION:.rdata,WR")    // Any attampt to make it writable will create .xdata section 
 
 #pragma comment(linker,"/ENTRY:DLLMain")
 #pragma comment(linker,"/NODEFAULTLIB")
@@ -23,6 +30,7 @@
 UINT IPCSize = 0x100000;    // 1Mb (Enough when Req-Rsp removed)
 //bool HideDllProxy = true;
 //bool HideDllProxyDsk = true;
+bool SuspMainThAtLd = false;        // Suspend main thread when loaded by GInjer
 bool RstDskHiddenProxy = true;
 bool AllowEjectOnDetach = false;
 //---------------------------------------
@@ -34,83 +42,119 @@ PHOOK(ProcNtUnmapViewOfSection) HookNtUnmapViewOfSection;
 PHOOK(ProcNtMapViewOfSection) HookNtMapViewOfSection;
 PHOOK(ProcNtGetContextThread) HookNtGetContextThread;
 PHOOK(ProcNtSetContextThread) HookNtSetContextThread;
-PHOOK(ProcNtTerminateThread) HookNtTerminateThread;
-//PHOOK(ProcNtTerminateProcess) HookNtTerminateProcess;                          
+PHOOK(ProcNtTerminateThread)  HookNtTerminateThread;
+PHOOK(ProcNtTerminateProcess) HookNtTerminateProcess;                          
 PHOOK(ProcNtContinue) HookNtContinue;
 
+SHookLdrpInitialize       LdrpInitHook;
 SHookRtlDispatchException ExpDispHook;
-bool ModInjected = false;
+DWORD   ModInjFlags = 0;  // If 0 then the module is loaded normally(With loader)   // -1 if the module is hidden or a proxy
 //BYTE ProxyEncKey = 0;
 //PBYTE ProxyDllCopy = NULL;
 //DWORD ProxyDllSize = 0;
 GhDbg::CDbgClient* Dbg = NULL;
-HANDLE  hIpcTh     = NULL;
-DWORD   LastExcThID;    // Helps to reduce overhead of NtContinue hook
+HANDLE  hIpcTh      = NULL;
+DWORD   MainThId    = 0;
+DWORD   LastThID    = -1;
+DWORD   LastExcThID = 0;;    // Helps to reduce overhead of NtContinue hook
 
 //LPSTR   LibPathName = NULL;     // TODO: Add an option to not use a detectable hooks ("No detectable hooks")
 
 PBYTE   ThisLibBase = NULL;
-SIZE_T  ThisLibSize = 0;
+//SIZE_T  ThisLibSize = 0;
 
 PBYTE   MainExeBase = NULL;
-SIZE_T  MainExeSize = 0;
+//SIZE_T  MainExeSize = 0;
+
+alignas(16) BYTE ArrDbgClient[sizeof(GhDbg::CDbgClient)];
 
 wchar_t SysDirPath[MAX_PATH];
 wchar_t StartUpDir[MAX_PATH];
 wchar_t CfgFilePath[MAX_PATH];
 wchar_t WorkFolder[MAX_PATH];
 //===========================================================================
-BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved) 
+/*
+ NOTE: Only a SystemService(sysenter/int2E) type of functions is allowed to be used 
+
+ Can be loaded by: XDbgPlugin, GInjer, A target process somehow
+
+ Injector can load a DLL with LdrLoadDll or as '(HMODULE)Mod->ModuleBase, DLL_REFLECTIVE_LOAD, Mod'
+ Ginjer injects from a main thread
+*/
+// Reflective load:
+//     hModule    = Module Base
+//     ReasonCall = 15
+//     lpReserved = SInjModDesc*  (Can be used to find SBlkDescr*)
+//===========================================================================
+BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)  // ReasonCall and lpReserved is invalid for mfRunUAPC,mfRunRMTH,mfRunThHij
 {
- wchar_t DllDirPath[MAX_PATH];
- bool RemTh = (DWORD)hModule & 0x0FFF;      // Normal HMODULE would be aligned at 0x1000  
- if(RemTh || (ReasonCall > 3))    
-  {
-   //
-   // TODO: Prevent multi-entering from different threads when APC injection method used
-   //
-   hModule       = (HMODULE)InjLdr::PEImageInitialize(hModule);
-   ReasonCall    = DLL_PROCESS_ATTACH;
-   ModInjected   = true;   
-  }  
+ SModDesc* ModDesc = ModDescFromCurTh();        // NULL if loaded not by GInjer  // NOTE: GInjer uses main thread
+ SBlkDesc* BlkDesc = AddrToBlkDesc(ModDesc);
+ SLdrDesc* LdrDesc = GetCurLdrDesc(BlkDesc); 
+ UINT   RemThFlags = (DWORD)hModule & InjLdr::RemThModMarker;      // DLLMain has been passed to CreateRemoteThread/APC/ExistingThread (Where is only one argument available)  // Normal HMODULE would be aligned at 0x1000   
+#ifdef _DEBUG
+ if(ModDesc){LdrLogInit(ModDesc); LDRLOG("Hello from %08X: %ls", ModDesc->Flags, &ModDesc->ModulePath);}
+#endif
+ if(RemThFlags || (ReasonCall >= DLL_REFLECTIVE_LOAD))  // NOTE: Variables get read in conditions even if these conditions is skipped   // Either an own thread or APC callback of an existing thread  // ReasonCall may be already outside of stack(Remote Thread)!
+  {  
+   DWORD InjFlg = (RemThFlags?RemThFlags:(ReasonCall & InjLdr::RemThModMarker)) << 24;   // ReasonCall = (Flags >> 24)|0x100  //  mfRunUAPC,mfRunRMTH,mfRunThHij,mfRawRMTH
+   bool NotOwnThread  = (InjFlg & (InjLdr::mfRunUAPC|InjLdr::mfRunThHij));
+   bool NotReusableTh = ModDesc || NotOwnThread;
+   if(InjFlg & InjLdr::mfRunUAPC)   // Cannot reuse these threads
+    {
+     //
+     // TODO: Prevent multi-entering from different threads when APC or Hijack injection method used
+     //
+    }
+   if(ModDesc)hModule = (HMODULE)InjLdr::ReflectiveRelocateSelf(hModule, (LdrDesc)?((PVOID)LdrDesc->NtDllBase):(NULL));  // Allocate to a new buffer  // Loaded by GInjer                       
+     else hModule = (HMODULE)InjLdr::PEImageInitialize(hModule);      // Relocate in current buffer (Must be large enough)       // Loaded by a Debugger plugin
+   if(!NotReusableTh)hIpcTh = NtCurrentThread;   // Can be changed later, before Start, if needed   // A reusable injected remote thread  // Assign globals after relocation
+   if(ModDesc && !NotOwnThread)MainThId = NtCurrentThreadId();    // Main thread by GInjer
+   ReasonCall  = DLL_PROCESS_ATTACH;
+   ModInjFlags = InjFlg;   // Injected with
+  } 
+   else MainThId = NtCurrentThreadId();   // Injected from a Main Thread or loaded normally
  switch(ReasonCall)	    
   {			 
    case DLL_PROCESS_ATTACH:
-    {     
+    {
+     wchar_t DllDirPath[MAX_PATH];
      ThisLibBase  = (PBYTE)hModule;
-	 MainExeBase  = (PBYTE)GetModuleHandleA(NULL);
+	 MainExeBase  = (PBYTE)NNTDLL::GetModuleBaseLdr(NULL); // GetModuleHandleA(NULL);
 //     LibPathName  = (LPSTR)&SysDirPath;
-     ThisLibSize  = GetRealModuleSize(ThisLibBase);
-     MainExeSize  = GetRealModuleSize(MainExeBase);
-
-     GetModuleFileNameW((HMODULE)hModule,DllDirPath,countof(DllDirPath));        
-     GetSystemDirectoryW(SysDirPath,countof(SysDirPath));
+//     ThisLibSize  = GetRealModuleSize(ThisLibBase);
+//     MainExeSize  = GetRealModuleSize(MainExeBase);
+            
+     NNTDLL::GetModuleNameLdr(hModule,DllDirPath,countof(DllDirPath));    //  GetModuleFileNameW((HMODULE)hModule,DllDirPath,countof(DllDirPath));        
+//     GetSystemDirectoryW(SysDirPath,countof(SysDirPath));   // Get it from PEB?
      NSTR::StrCnat(SysDirPath, L"\\");
      NSTR::StrCnat(SysDirPath,GetFileName(DllDirPath));
-     GetModuleFileNameW((HMODULE)MainExeBase,StartUpDir,countof(StartUpDir));        
+     NNTDLL::GetModuleNameLdr(MainExeBase,StartUpDir,countof(StartUpDir));    //  GetModuleFileNameW((HMODULE)MainExeBase,StartUpDir,countof(StartUpDir));        
         
 	 NSTR::StrCopy(WorkFolder, StartUpDir);
      TrimFilePath(WorkFolder);
 //     NSTR::StrCnat((LPSTR)&WorkFolder,".LOGS\\");
-
 #ifndef NOLOG
      NSTR::StrCopy(LogFilePath, WorkFolder);
 	 NSTR::StrCnat(LogFilePath, GetFileName(StartUpDir));
-     NSTR::StrCnat(LogFilePath, LOGFILE);
+     NSTR::StrCnat(LogFilePath, ctENCSA(LOGFILE));
 #endif
      NSTR::StrCopy(CfgFilePath, WorkFolder);
      NSTR::StrCnat(CfgFilePath, GetFileName(StartUpDir));
-     NSTR::StrCnat(CfgFilePath, CFGFILE);	
+     NSTR::StrCnat(CfgFilePath, ctENCSA(CFGFILE));	
 
-     CreateDirectoryPath(WorkFolder);
+//     CreateDirectoryPath(WorkFolder);
      LoadConfiguration();
-	 if(LogMode & lmCons){AllocConsole();/*SetWinConsoleSizes(1000, 500, 1000, 500);*/}
-	 LOGMSG("Time=%08X, ExeBase=%p, Owner='%ls'", (DWORD)GetTime64(),MainExeBase,&StartUpDir);	
-//	 LOGMSG("HookMod=%p, RealMod=%p", hModule, hRealMod);
+	 DBGMSG("Starting up... (Time=%016X), Owner='%ls'", SysTimeToTime64(NNTDLL::GetSystemTime()), &StartUpDir);
+	 DBGMSG("RemThFlags=%08X, hIpcTh=%p, ModDesc=%p, hModule=%p, lpReserved=%p, ModInjFlags=%08X, MainThId=%u", RemThFlags, hIpcTh, ModDesc, hModule, lpReserved, ModInjFlags, MainThId);
      TrimFilePath(StartUpDir);
-     LOGMSG("WorkFolder: %ls", &WorkFolder);
-     LOGMSG("StartUpDir: %ls", &StartUpDir);
-     LOGMSG("SysDirPath: %ls", &SysDirPath);	
+     DBGMSG("WorkFolder: %ls", &WorkFolder);
+     DBGMSG("StartUpDir: %ls", &StartUpDir);
+     DBGMSG("SysDirPath: %ls", &SysDirPath);
+
+/*     {
+      NTSTATUS stat = GhDbg::CDbgClient::CreateIpcThread(&hIpcTh, NULL, TRUE);   // <<<<<<<<< TEST !!!!!!!!!!!!
+     }  */
 /*     BOOL dres = true;
      if(!ModInjected && HideDllProxy)    // NOTE: NO MORE DLL PROXY NEEDED
       {
@@ -119,12 +163,12 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
        hIpcTh = CreateThread(NULL,0,&GhDbg::CDbgClient::IPCQueueThread,NULL,CREATE_SUSPENDED,NULL);   // Some anticheats prevent creation of threads outside of any module
        if(InjLdr::HideSelfProxyDll(hModule, GetModuleHandleA(ctENCSA("ntdll.dll")), (LPSTR)&SysDirPath, &NewBase, &EntryPT) > 0)   // Are imports from our proxy DLL is already resolved by loader at this point?
         {
-         LOGMSG("Calling EP of a real DLL: Base=%p, EP=%p",hModule,EntryPT);
+         DBGMSG("Calling EP of a real DLL: Base=%p, EP=%p",hModule,EntryPT);
          dres = ((decltype(DLLMain)*)EntryPT)(hModule, ReasonCall, lpReserved);   // Pass DLL_PROCESS_ATTACH notification
          hModule = (HMODULE)NewBase;
          if(HideDllProxyDsk && DllDirPath[0])
           {
-           LOGMSG("Hiding from disk...");
+           DBGMSG("Hiding from disk...");
            if(RstDskHiddenProxy)
             {
              ProxyEncKey = (GetTickCount() >> 3) | 0x80;
@@ -146,25 +190,24 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
               }
             }
            DeleteFileA((LPSTR)&DllDirPath);     // It is no longer mapped
-           LOGMSG("Done hiding from disk!");
+           DBGMSG("Done hiding from disk!");
           }
         }
-       LOGMSG("Done hiding!");
+       DBGMSG("Done hiding!");
       } */
      if(!InitApplication())return false; 
-     if(RemTh){LOGMSG("Terminating injected thread: %u", NtCurrentThreadId()); TerminateThread(GetCurrentThread(),0);}     //Stack frame may be incorrect
+     if(ModInjFlags & InjLdr::mfRunRMTH){DBGMSG("Terminating injected thread(this): %u", NtCurrentThreadId()); NtTerminateThread(NtCurrentThread,0);}     // Stack frame may be incorrect
      return true;  //dres;
     }
      break;									
    case DLL_THREAD_ATTACH:
-     LOGMSG("Hello DLL_THREAD_ATTACH");
      if(Dbg && Dbg->IsActive())Dbg->TryAddCurrThread();  //Dbg->Report_CREATE_THREAD_DEBUG_EVENT(NtCurrentThreadId());     // For a simple testing
      break; 
    case DLL_THREAD_DETACH:
-     if(Dbg && Dbg->IsActive())Dbg->Report_EXIT_THREAD_DEBUG_EVENT(NtCurrentThreadId(),0);     // For a simple testing
+     if(Dbg && Dbg->IsActive())Dbg->Report_EXIT_THREAD_DEBUG_EVENT(NtCurrentTeb(),0);     // For a simple testing
      break;
    case DLL_PROCESS_DETACH: 
-     if(Dbg && Dbg->IsActive())Dbg->Report_EXIT_PROCESS_DEBUG_EVENT(0);      // For a simple testing
+     if(Dbg && Dbg->IsActive())Dbg->Report_EXIT_PROCESS_DEBUG_EVENT(NtCurrentTeb(),0);      // For a simple testing
      UnInitApplication();     
 	 break;
 
@@ -173,21 +216,28 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
  return true;
 }
 //====================================================================================
-void _stdcall LoadConfiguration(void)
-{    
- CJSonItem Root;
+void _stdcall LoadConfiguration(void)   // Avoid any specific file access here for now
+{ 
+#ifdef _DEBUG
+   LogMode = lmFile;
+   // NSTR::StrCopy(LogFilePath, "C:\\TEST\\_LogMy.txt");
+#endif
+
+/* CJSonItem Root;
  CMiniStr  str;
  str.FromFile(CfgFilePath);
  bool BinFmt = (str.Length())?(CJSonItem::IsBinaryEncrypted(str.c_data()) >= 0):(0);
- LOGMSG("Loading config(Bin=%u): %ls", BinFmt, &CfgFilePath);
+ DBGMSG("Loading config(Bin=%u): %ls", BinFmt, &CfgFilePath);
  if(str.Length())Root.FromString(str);
  CJSonItem* Params = EnsureJsnParam(jsObject, "Parameters", &Root);  
  LogMode       = EnsureJsnParam((int)LogMode,       "LogMode",       Params)->GetValInt();     // lmCons;//
- IPCSize       = EnsureJsnParam(IPCSize,            "IPCSize",       Params)->GetValInt();    
+ IPCSize       = EnsureJsnParam(IPCSize,            "IPCSize",       Params)->GetValInt(); 
+ SuspMainThAtLd = EnsureJsnParam(SuspMainThAtLd,     "SuspMainThAtLd",    Params)->GetValBol(); 
  //HideDllProxy  = EnsureJsnParam(HideDllProxy,         "HideDllProxy",    Params)->GetValBol(); 
  //HideDllProxyDsk = EnsureJsnParam(HideDllProxyDsk,         "HideDllProxyDsk",    Params)->GetValBol(); 
  AllowEjectOnDetach = EnsureJsnParam(AllowEjectOnDetach,         "AllowEjectOnDetach",    Params)->GetValBol();  
-            // if(LogMode == lmCons)AllocConsole();
+// if(LogMode & lmCons){AllocConsole();}                                      // SetWinConsoleSizes(1000, 500, 1000, 500);
+
  CJSonItem* DbgParams = EnsureJsnParam(jsObject, "DbgClient", &Root);   
  if(Dbg)
   {
@@ -199,24 +249,25 @@ void _stdcall LoadConfiguration(void)
    Dbg->OnlyOwnTF    = EnsureJsnParam(Dbg->OnlyOwnTF,           "OnlyOwnTF",      DbgParams)->GetValBol(); 
    Dbg->SwBpVal      = EnsureJsnParam((UINT)Dbg->SwBpVal,       "SwBpVal",        DbgParams)->GetValBol(); 
   }
- LOGMSG("Saving config(Bin=%u): %ls", BinFmt, &CfgFilePath);
+ DBGMSG("Saving config(Bin=%u): %ls", BinFmt, &CfgFilePath);
  str.Clear();
  if(BinFmt)Root.ToBinary(str,true);
  Root.ToString(str,true);
- str.ToFile(CfgFilePath);  
+ str.ToFile(CfgFilePath);  */
 }
 //------------------------------------------------------------------------------------
 void _stdcall SaveConfiguration(int BinFmt)
 {
- CJSonItem Root;
+/* CJSonItem Root;
  CMiniStr  str;
  str.FromFile(CfgFilePath);
  bool VBinFmt = (str.Length() || (BinFmt < 0))?(CJSonItem::IsBinaryEncrypted(str.c_data()) >= 0):(BinFmt > 0);
- LOGMSG("Loading config(Bin=%u): %ls", VBinFmt, &CfgFilePath);
+ DBGMSG("Loading config(Bin=%u): %ls", VBinFmt, &CfgFilePath);
  if(str.Length())Root.FromString(str);
  CJSonItem* Params = EnsureJsnParam(jsObject, "Parameters", &Root);  
  LogMode       = SetJsnParamValue((int)LogMode,       "LogMode",       Params)->GetValInt();
  IPCSize       = SetJsnParamValue(IPCSize,            "IPCSize",       Params)->GetValInt();  
+ SuspMainThAtLd  = SetJsnParamValue(SuspMainThAtLd,   "SuspMainThAtLd",    Params)->GetValBol(); 
  //HideDllProxy       = SetJsnParamValue(HideDllProxy,         "HideDllProxy",    Params)->GetValBol(); 
  //HideDllProxyDsk       = SetJsnParamValue(HideDllProxyDsk,         "HideDllProxyDsk",    Params)->GetValBol(); 
  AllowEjectOnDetach       = SetJsnParamValue(AllowEjectOnDetach,         "AllowEjectOnDetach",    Params)->GetValBol();   
@@ -232,66 +283,71 @@ void _stdcall SaveConfiguration(int BinFmt)
    SetJsnParamValue(Dbg->OnlyOwnTF,           "OnlyOwnTF",      DbgParams)->GetValBol(); 
    SetJsnParamValue((UINT)Dbg->SwBpVal,       "SwBpVal",        DbgParams)->GetValBol(); 
   }
- LOGMSG("Saving config(Bin=%u): %ls", BinFmt, &CfgFilePath);
+ DBGMSG("Saving config(Bin=%u): %ls", BinFmt, &CfgFilePath);
  str.Clear();
  if(VBinFmt)Root.ToBinary(str,true);
  Root.ToString(str,true);
- str.ToFile(CfgFilePath);
+ str.ToFile(CfgFilePath);   */
 }
 //------------------------------------------------------------------------------------
 bool _stdcall InitApplication(void)
 {
- LOGMSG("Enter");
- if(GhDbg::CDbgClient::IsExistForID(GetCurrentProcessId())){LOGMSG("Already injected!"); return false;}
+ DBGMSG("Enter");
+ if(GhDbg::CDbgClient::IsExistForID(NtCurrentProcessId())){DBGMSG("Already injected!"); return false;}
 
 /*#ifdef _AMD64_
- HookRtlRestoreContext.SetHook("RtlRestoreContext","ntdll.dll");
+ HookRtlRestoreContext.SetHook("RtlRestoreContext","ntdll.dll");     // NtContinue
 #endif
  HookKiUserExceptionDispatcher.SetHook("KiUserExceptionDispatcher","ntdll.dll");    
  HookLdrInitializeThunk.SetHook("LdrInitializeThunk","ntdll.dll");     */
 
- Dbg = new GhDbg::CDbgClient;
+ Dbg = new ((void*)&ArrDbgClient) GhDbg::CDbgClient(ThisLibBase);
  Dbg->UsrReqCallback = &DbgUsrReqCallback;
- LoadConfiguration();
- LOGMSG("IPC created: IPCSize=%u",IPCSize);
- HookNtMapViewOfSection.SetHook("NtMapViewOfSection","ntdll.dll");
- HookNtUnmapViewOfSection.SetHook("NtUnmapViewOfSection","ntdll.dll");   
- HookNtGetContextThread.SetHook("NtGetContextThread","ntdll.dll");
- HookNtSetContextThread.SetHook("NtSetContextThread","ntdll.dll");
- HookNtTerminateThread.SetHook("NtTerminateThread","ntdll.dll");
-// HookNtTerminateProcess.SetHook("NtTerminateProcess","ntdll.dll");       // Only for ProxyRestore to disk
- HookNtContinue.SetHook("NtContinue","ntdll.dll"); 
- ExpDispHook.SetHook(ProcExpDispBefore, ProcExpDispAfter);
- LOGMSG("Hooks set");  
- Dbg->Start(IPCSize, hIpcTh);        // Start it from DLL Main to avoid of similair DLL being loaded again
- LOGMSG("IPC started");
+////////// LoadConfiguration();
+ DBGMSG("IPC created: IPCSize=%u",IPCSize);
+ PVOID pNtDll = GetNtDllBaseFast(); 
+ DBGMSG("NtDllBase: %p",pNtDll);
+ HookNtMapViewOfSection.SetHook(GetProcAddr(pNtDll, ctENCSA("NtMapViewOfSection")));         // For DLLs list
+ HookNtUnmapViewOfSection.SetHook(GetProcAddr(pNtDll, ctENCSA("NtUnmapViewOfSection")));     // For DLLs list
+ HookNtGetContextThread.SetHook(GetProcAddr(pNtDll, ctENCSA("NtGetContextThread")));         // For DRx hiding
+ HookNtSetContextThread.SetHook(GetProcAddr(pNtDll, ctENCSA("NtSetContextThread")));         // For DRx hiding
+ HookNtTerminateThread.SetHook(GetProcAddr(pNtDll, ctENCSA("NtTerminateThread")));           // For Thread list update
+ HookNtTerminateProcess.SetHook(GetProcAddr(pNtDll, ctENCSA("NtTerminateProcess")));         // Importand for latest Windows 10 bugs
+ HookNtContinue.SetHook(GetProcAddr(pNtDll, ctENCSA("NtContinue")));                         // For Thread list update   // TODO: Replace with LdrInitializeThunk hook
+ ExpDispHook.SetHook(ProcExpDispBefore, ProcExpDispAfter);                          // Debugger core function
+ LdrpInitHook.SetHook(ProcLdrpInitialize);                                          // Optional: HookNtContinue can do the job but threads will be reported after initialization
+ DBGMSG("Hooks set: hIpcTh=%p, MainThId=%u",hIpcTh, MainThId);  
+ Dbg->Start(IPCSize, hIpcTh, NULL, MainThId, (hIpcTh != NtCurrentThread)?NtCurrentThreadId():0);     // Start it from DLL Main to avoid of similair DLL being loaded again    // Exclude current temporary thread
+ DBGMSG("IPC started");
  return true;
 }                                               
 //------------------------------------------------------------------------------------
 void _stdcall UnInitApplication(void)
-{                                
+{   
+ DBGMSG("Enter");
+ if(Dbg)Dbg->~CDbgClient();   //  delete(Dbg);  // Compiler will ALWAYS put an unused call to operator DELETE here if called 'Dbg->~CDbgClient()' in Release build if not specified '/MTd'(Multi-Threaded Debug) but it will define '_DEBUG to 1'!
+ DBGMSG("IPC destroyed");
  HookNtContinue.Remove();
  HookNtTerminateThread.Remove();
- //HookNtTerminateProcess.Remove();
+ HookNtTerminateProcess.Remove();
  HookNtUnmapViewOfSection.Remove();
  HookNtMapViewOfSection.Remove(); 
  HookNtSetContextThread.Remove();
  HookNtGetContextThread.Remove();
+ LdrpInitHook.Remove();
  ExpDispHook.Remove();
- LOGMSG("Hooks removed");
- if(Dbg)delete(Dbg);
- LOGMSG("IPC destroyed");
+ DBGMSG("Hooks removed");
 }
 //------------------------------------------------------------------------------------
-int _stdcall DbgUsrReqCallback(ShMem::CMessageIPC::SMsgHdr* Req, PVOID ArgA, UINT ArgB)
+int _fastcall DbgUsrReqCallback(ShMem::CMessageIPC::SMsgHdr* Req, PVOID ArgA, UINT ArgB)
 {
  if(Req->MsgID == GhDbg::miDbgGetConfigs)
   {
    ShMem::CArgPack<>* apo = (ShMem::CArgPack<>*)ArgA;   
 //   apo->PushArgEx(HideDllProxy, "Hide Proxy DLL (After Restart)", GhDbg::CDbgClient::MakeCfgItemID(++ArgB,GhDbg::dtBool));  
 //   apo->PushArgEx(HideDllProxyDsk, "Hide Proxy DLL on Disk (After Restart)", GhDbg::CDbgClient::MakeCfgItemID(++ArgB,GhDbg::dtBool));  
-   if(ModInjected)apo->PushArgEx(AllowEjectOnDetach, "Allow Eject On Detach", GhDbg::CDbgClient::MakeCfgItemID(++ArgB,GhDbg::dtBool));    
-   if(ModInjected){bool Nons = false; apo->PushArgEx(Nons, "Eject", GhDbg::CDbgClient::MakeCfgItemID(++ArgB,GhDbg::dtBool));}    
+   if(!ModInjFlags)apo->PushArgEx(AllowEjectOnDetach, ctENCSA("Allow Eject On Detach"), GhDbg::CDbgClient::MakeCfgItemID(++ArgB,GhDbg::dtBool));    
+   if(!ModInjFlags){bool Nons = false; apo->PushArgEx(Nons, ctENCSA("Eject"), GhDbg::CDbgClient::MakeCfgItemID(++ArgB,GhDbg::dtBool));}    
    return ArgB;
   }
  if(Req->MsgID == GhDbg::miDbgSetConfigs)
@@ -312,12 +368,12 @@ int _stdcall DbgUsrReqCallback(ShMem::CMessageIPC::SMsgHdr* Req, PVOID ArgA, UIN
          AllowEjectOnDetach = *(bool*)ArgA;
         break;
        case 2:  
-         if(ModInjected)
+         if(!ModInjFlags)
           {
-           LOGMSG("Ejecting by user!");
+           DBGMSG("Ejecting by user!");
            UnInitApplication();
-           LOGMSG("Uninit done. Unmapping...");
-           InjLdr::UnmapAndTerminateSelf(ThisLibBase);
+           DBGMSG("Uninit done. Unmapping...");
+           NtTerminateThread(NtCurrentThread, 0);       //// InjLdr::UnmapAndTerminateSelf(ThisLibBase);  // TODO: Self unmap or deallocate        
           }
         break;
       }
@@ -327,12 +383,12 @@ int _stdcall DbgUsrReqCallback(ShMem::CMessageIPC::SMsgHdr* Req, PVOID ArgA, UIN
   }
  if(Req->MsgID == GhDbg::miDbgDetachNtfy)
   {
-   if(AllowEjectOnDetach && ModInjected)
+   if(AllowEjectOnDetach && !ModInjFlags)
     {
-     LOGMSG("Ejecting on Detach!");
+     DBGMSG("Ejecting on Detach!");
      UnInitApplication();
-     LOGMSG("Uninit done. Unmapping...");
-     InjLdr::UnmapAndTerminateSelf(ThisLibBase);
+     DBGMSG("Uninit done. Unmapping...");
+     NtTerminateThread(NtCurrentThread, 0);   //// InjLdr::UnmapAndTerminateSelf(ThisLibBase);    // TODO: Self unmap or deallocate
     }
   }
  return 0;
@@ -372,6 +428,12 @@ void NTAPI ProcLdrInitializeThunk(PVOID ArgA, PVOID ArgB, PVOID ArgC, PVOID ArgD
  HookLdrInitializeThunk.OrigProc(ArgA, ArgB, ArgC, ArgD);     // Must be tail optimized - Requires optimization to be enabled (O1,O2,Ox)
 }  */
 //------------------------------------------------------------------------------------
+void _stdcall ProcLdrpInitialize(volatile PCONTEXT Ctx, volatile PVOID NtDllBase)
+{
+ DBGMSG("RetAddr=%p, Ctx=%p, NtDllBase=%p",_ReturnAddress(),Ctx,NtDllBase); 
+// if(Dbg && Dbg->IsActive()){LastThID = NtCurrentThreadId(); Dbg->TryAddCurrThread();}   // LastThID prevents TryAddCurrThread from ProcNtContinue
+}
+//------------------------------------------------------------------------------------
 /* x64
 RSP+00 = RetAddr
 RSP+08 = RCX
@@ -388,10 +450,10 @@ RSP+20 = R9
 */                                                                                    
 bool _cdecl ProcExpDispBefore(volatile PVOID ArgA, volatile PVOID ArgB, volatile PVOID ArgC, volatile PVOID ArgD, volatile PVOID RetVal)
 {
- DBGMSG("Code=%08X, Addr=%p, FCtx=%08X",((PEXCEPTION_RECORD)ArgA)->ExceptionCode, ((PEXCEPTION_RECORD)ArgA)->ExceptionAddress, ((PCONTEXT)ArgB)->ContextFlags);
+// DBGMSG("Code=%08X, Addr=%p, FCtx=%08X",((PEXCEPTION_RECORD)ArgA)->ExceptionCode, ((PEXCEPTION_RECORD)ArgA)->ExceptionAddress, ((PCONTEXT)ArgB)->ContextFlags);     
  DWORD ThID = LastExcThID = NtCurrentThreadId();
  if(!Dbg || !Dbg->IsActive() || Dbg->IsDbgThreadID(ThID))return true;
- if(Dbg->HandleException(ThID, (PEXCEPTION_RECORD)ArgA, (PCONTEXT)ArgB)){RetVal = (PVOID)TRUE; DBGMSG("Handled!"); return false;}    // Handled by a debugger
+ if(Dbg->HandleException(ThID, (PEXCEPTION_RECORD)ArgA, (PCONTEXT)ArgB)){RetVal = (PVOID)TRUE; /*DBGMSG("Handled!");*/ return false;}    // Handled by a debugger
  if(!Dbg->HideDbgState)return true;
 
 // CONTEXT ForgedCtx;      // No debugger context hiding for now :(                      // Can it be detected that this is a copy of original CONTEXT and have a different address on stack?
@@ -403,8 +465,8 @@ bool _cdecl ProcExpDispBefore(volatile PVOID ArgA, volatile PVOID ArgB, volatile
 //------------------------------------------------------------------------------------
 bool _cdecl ProcExpDispAfter(volatile PVOID ArgA, volatile PVOID ArgB, volatile PVOID ArgC, volatile PVOID ArgD, volatile PVOID RetVal)
 {
- DBGMSG("Exiting!"); 
-// Dbg->DebugThreadSave(ThID, &ForgedCtx);  // Save any modifications to DRx in a separate struct 
+// DBGMSG("Exiting!");      
+// Dbg->DebugThreadSave(ThID, &ForgedCtx);  // Save any modifications to DRx in a separate struct    // NOTE: It is rare that a AntiDebug check will use an exception handlers to check DRx?
 // Dbg->DebugRstExcContext(ContextRecord, &ForgedCtx);
  return true;
 }
@@ -416,50 +478,57 @@ bool _cdecl ProcExpDispAfter(volatile PVOID ArgA, volatile PVOID ArgB, volatile 
 // Normal Dll map: AllocationType=00800000[MEM_ROTATE], Win32Protect=00000004[PAGE_READWRITE]    // Win10
 //
 // WinXPx32: ZwMapViewOfSection(v88, -1, (int)&v89, 0, 0, 0, (int)&v86, 1, 0, 4);
-// Win7x64: ZwMapViewOfSection(v9, -1i64, v13, 0i64, 0i64, 0i64, v12, 1, v10, 4);
+// Win7x64:  ZwMapViewOfSection(v9, -1i64, v13, 0i64, 0i64, 0i64, v12, 1, v10, 4);
 //
 NTSTATUS NTAPI ProcNtMapViewOfSection(HANDLE SectionHandle, HANDLE ProcessHandle, PVOID* BaseAddress, ULONG_PTR ZeroBits, SIZE_T CommitSize, PLARGE_INTEGER SectionOffset, PSIZE_T ViewSize, SECTION_INHERIT InheritDisposition, ULONG AllocationType, ULONG Win32Protect)    // NOTE: A detectable hook!
 {                
- NTSTATUS res = HookNtMapViewOfSection.OrigProc(SectionHandle,ProcessHandle,BaseAddress,ZeroBits,CommitSize,SectionOffset,ViewSize,InheritDisposition,AllocationType,Win32Protect); 
- if(!res && BaseAddress && *BaseAddress && ViewSize && *ViewSize && Dbg && Dbg->IsActive() && GhDbg::IsCurrentProcess(ProcessHandle) && IsValidPEHeaderBlk(*BaseAddress, Dbg->IsMemAvailable(*BaseAddress)))    // Try to get the module`s name?
+ NTSTATUS res = HookNtMapViewOfSection.OrigProc(SectionHandle,ProcessHandle,BaseAddress,ZeroBits,CommitSize,SectionOffset,ViewSize,InheritDisposition,AllocationType,Win32Protect);    // May return STATUS_IMAGE_NOT_AT_BASE
+ if((res >= 0) && BaseAddress && *BaseAddress && ViewSize && *ViewSize)      // && Dbg && Dbg->IsActive() && GhDbg::IsCurrentProcess(ProcessHandle) && IsValidPEHeaderBlk(*BaseAddress, Dbg->IsMemAvailable(*BaseAddress)))    // Try to get the module`s name?
   {            
-   DBGMSG("Module: Status=%08X, SectionHandle=%p, BaseAddress=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,*BaseAddress,*ViewSize,AllocationType,Win32Protect);
-   if(Dbg && Dbg->IsActive() && (Win32Protect == PAGE_READWRITE))   // <<< Duplicate mapping causes BPs to be set again and never removed if this module is already loaded(If this is not caused by LdrLoadDll)!
+   DBGMSG("Module: Status=%08X, SectionHandle=%p, BaseAddress=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,*BaseAddress,*ViewSize,AllocationType,Win32Protect);     
+   if(Dbg && Dbg->IsActive() && (Win32Protect == PAGE_READWRITE) && NNTDLL::IsCurrentProcess(ProcessHandle) && IsValidPEHeaderBlk(*BaseAddress, Dbg->IsMemAvailable(*BaseAddress)))   // <<< Duplicate mapping causes BPs to be set again and never removed if this module is already loaded(If this is not caused by LdrLoadDll)!
     {
-     Dbg->Report_LOAD_DLL_DEBUG_INFO(*BaseAddress);  // NOTE: This is done before PE configuration by LdrLoadDll  // Events:TLS Callbacks must be disabled or xg4dbg will crash in 'cbLoadDll{ auto modInfo = ModInfoFromAddr(duint(base));}' (because it won`t check for NULL) if this mapping will be unmapped too soon
+     Dbg->Report_LOAD_DLL_DEBUG_INFO(NtCurrentTeb(), *BaseAddress);  // NOTE: This is done before PE configuration by LdrLoadDll  // Events:TLS Callbacks must be disabled or xg4dbg will crash in 'cbLoadDll{ auto modInfo = ModInfoFromAddr(duint(base));}' (because it won`t check for NULL) if this mapping will be unmapped too soon
     }
   } 
-//   else {LOGMSG("Status=%08X, SectionHandle=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,ViewSize,AllocationType,Win32Protect);}
+//   else {DBGMSG("Status=%08X, SectionHandle=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,ViewSize,AllocationType,Win32Protect);}
  return res;
 }
 //------------------------------------------------------------------------------------
 NTSTATUS NTAPI ProcNtUnmapViewOfSection(HANDLE ProcessHandle, PVOID BaseAddress)   // NOTE: A detectable hook!
 {
- if(GhDbg::IsCurrentProcess(ProcessHandle) && IsValidPEHeaderBlk(BaseAddress, Dbg->IsMemAvailable(BaseAddress)))
+ if(NNTDLL::IsCurrentProcess(ProcessHandle) && IsValidPEHeaderBlk(BaseAddress, Dbg->IsMemAvailable(BaseAddress)))
   {
-   DBGMSG("BaseAddress=%p",BaseAddress);
-   if(Dbg && Dbg->IsActive() && Dbg->IsOtherConnections())Dbg->Report_UNLOAD_DLL_DEBUG_EVENT(BaseAddress); 
+   DBGMSG("BaseAddress=%p",BaseAddress);    
+   if(Dbg && Dbg->IsActive() && Dbg->IsOtherConnections())Dbg->Report_UNLOAD_DLL_DEBUG_EVENT(NtCurrentTeb(), BaseAddress); 
   }                                            
  return HookNtUnmapViewOfSection.OrigProc(ProcessHandle,BaseAddress);
 }
 //------------------------------------------------------------------------------------
-// Called at start of a thread and at return from APC/Exception
-// Protect CONTEXT here? Can be used separately from any kernel callback?
+// Called at start of a thread(After initialization) and at return from APC/Exception
+// Protect CONTEXT here? Can be used separately from any kernel callback?  // Is someone using it for current thread`s CONTEXT modification(DRx corruption)?
 // On Win10 x64 it is called by RtlRestoreContext for normal exceptions but it is not used on Win7 x64  
 // On x32 it is called from LdrInitializeThunk when a new thread created (User mode thread`s entry point) 
+// LdrInitializeThunk exits with NtContinue
 // Hooking LdrInitializeThunk is hard
 //
 NTSTATUS NTAPI ProcNtContinue(PCONTEXT ContextRecord, BOOLEAN TestAlert)   // NOTE: A detectable hook!     // NOTE: Too much overhead of exception processing with this(Twice 'GetThread' on breakpoints)
 {
- static DWORD LastThID = -1;
  DWORD CurrThID = NtCurrentThreadId();
- if(Dbg && (CurrThID != LastThID) && (CurrThID != LastExcThID) && Dbg->IsActive())Dbg->TryAddCurrThread();       // Report this thread if it is not in list yet
+ if(Dbg && (CurrThID != LastThID) && (CurrThID != LastExcThID) && Dbg->IsActive()){LastThID=CurrThID; Dbg->TryAddCurrThread();}      // Report this thread if it is not in list yet
  return HookNtContinue.OrigProc(ContextRecord, TestAlert);   // Will not return
 }
 //------------------------------------------------------------------------------------
-/*NTSTATUS NTAPI ProcNtTerminateProcess(HANDLE ProcessHandle, NTSTATUS ExitStatus)  // DISABLED: Just let IPC to timeout
+// ProcessHandle is NULL then terminates all threads, except a current one 
+// RtlExitUserProcess: NtTerminateProcess(NULL), NtTerminateProcess(NtCurrentProcess)
+// On Win 10 (2019) some suspended threads won`t be terminated!
+//   Some race condition with NtSuspendThread and NtTerminateProcess when called from different threads at almost same time? 
+//   And they will be suspended when reporting i.e. DLL_UNLOAD, but GhostDbg thread already dead and can`t unfreeze these threads
+// Could be a useful feature of NtSuspendProcess ;)
+NTSTATUS NTAPI ProcNtTerminateProcess(HANDLE ProcessHandle, NTSTATUS ExitStatus)  
 {
- if(RstDskHiddenProxy && ProxyDllCopy)   // Restore the Proxy Dll on disk
+ DBGMSG("ProcessHandle=%p, ExitStatus=%08X",ProcessHandle,ExitStatus); 
+/* if(RstDskHiddenProxy && ProxyDllCopy)   // Restore the Proxy Dll on disk
   {   
    BYTE DllPath[MAX_PATH];
    for(UINT ctr=0,total=ProxyDllSize+MAX_PATH;ctr < total;ctr++)ProxyDllCopy[ctr] = DecryptByteWithCtr(ProxyDllCopy[ctr], ProxyEncKey, ctr);
@@ -472,38 +541,45 @@ NTSTATUS NTAPI ProcNtContinue(PCONTEXT ContextRecord, BOOLEAN TestAlert)   // NO
      CloseHandle(hFile);
      VirtualFree(ProxyDllCopy,0,MEM_RELEASE); 
      ProxyDllCopy = NULL;
-     LOGMSG("ProxyDll Restored: %s", (LPSTR)&DllPath);
+     DBGMSG("ProxyDll Restored: %s", (LPSTR)&DllPath);
     }
+  } */
+ if(Dbg && Dbg->IsActive() && (!ProcessHandle || (ProcessHandle == NtCurrentProcess))) 
+  {   
+   if(!ProcessHandle)Dbg->Report_EXIT_PROCESS_DEBUG_EVENT(NtCurrentTeb(),0);   // (ProcessHandle==NULL) will terminate all other threads, including GhostDbg
+     else UnInitApplication();     // Do not report EXIT_PROCESS_DEBUG_EVENT second time!
   }
  return HookNtTerminateProcess.OrigProc(ProcessHandle, ExitStatus);
-} */
+} 
 //------------------------------------------------------------------------------------
 // Exit from a thread`s proc will also end up here  
 // ThreadHandle is NULL for a current thread; NtCurrentThread is also works
 NTSTATUS NTAPI ProcNtTerminateThread(HANDLE ThreadHandle, NTSTATUS ExitStatus)   // NOTE: A detectable hook!
 {
- ULONG ThID;
- if(Dbg && Dbg->IsActive() && (ThID=GhDbg::GetCurrProcessThreadID(ThreadHandle)))Dbg->Report_EXIT_THREAD_DEBUG_EVENT(ThID,ExitStatus);  
+ PTEB teb = NULL;
+ DBGMSG("ThreadHandle=%p",ThreadHandle); 
+ if(Dbg && Dbg->IsActive() && (teb=NNTDLL::GetCurrProcessTEB(ThreadHandle))){ Dbg->Report_EXIT_THREAD_DEBUG_EVENT(teb,ExitStatus); } 
+ DBGMSG("Terminating: %p, %u",teb,(teb?(UINT)teb->ClientId.UniqueThread:0)); 
  return HookNtTerminateThread.OrigProc(ThreadHandle, ExitStatus);   // TODO: Just call our own NtTerminateThread 
 }
 //------------------------------------------------------------------------------------    
 NTSTATUS NTAPI ProcNtGetContextThread(HANDLE ThreadHandle, PCONTEXT Context)    // NOTE: A detectable hook!
 {  
  ULONG ThID;
- NTSTATUS res = HookNtGetContextThread.OrigProc(ThreadHandle, Context);    // TODO: Just call our own NtGetContextThread
- if(!res && Dbg && Dbg->IsActive() && Dbg->HideDbgState && (ThID=GhDbg::GetCurrProcessThreadID(ThreadHandle)))Dbg->DebugThreadLoad(ThID, Context);   // Load into CONTEXT a previously saved DRx instead of currently read ones
+ NTSTATUS res = HookNtGetContextThread.OrigProc(ThreadHandle, Context);    // TODO: Just call our own NtGetContextThread(What if it is hooked by someone)?
+ if(!res && Dbg && Dbg->IsActive() && Dbg->HideDbgState && (ThID=NNTDLL::GetCurrProcessThreadID(ThreadHandle)))Dbg->DebugThreadLoad(ThID, Context);   // Load into CONTEXT a previously saved DRx instead of currently read ones
  return res;
 }
 //------------------------------------------------------------------------------------    
 NTSTATUS NTAPI ProcNtSetContextThread(HANDLE ThreadHandle, PCONTEXT Context)    // NOTE: A detectable hook!   // Do not let DRx to be changed by this
 {
  ULONG ThID;
- if(!Dbg || !Dbg->IsActive() || !Dbg->HideDbgState || !(ThID=GhDbg::GetCurrProcessThreadID(ThreadHandle)))return HookNtSetContextThread.OrigProc(ThreadHandle, Context);   // TODO: Just call our own NtSetContextThread
+ if(!Dbg || !Dbg->IsActive() || !Dbg->HideDbgState || !(ThID=NNTDLL::GetCurrProcessThreadID(ThreadHandle)))return HookNtSetContextThread.OrigProc(ThreadHandle, Context);   // TODO: Just call our own NtSetContextThread
  CONTEXT FCtx;      // Copy of CONTEXT where CONTEXT_DEBUG_REGISTERS is removed (CONTEXT_DEBUG_REGISTERS must be preserved in original Context in case it may be checked)
  Dbg->DebugThreadSave(ThID, Context);    // Save any magic numbers which may be stored in debug registers to detect a debugger
  memcpy(&FCtx,Context,sizeof(CONTEXT));
  FCtx.ContextFlags &= ~0x00000010;   // CONTEXT_DEBUG_REGISTERS     // TF is allowed to change? 
- return HookNtSetContextThread.OrigProc(ThreadHandle, &FCtx);   // TODO: Just call our own NtSetContextThread
+ return HookNtSetContextThread.OrigProc(ThreadHandle, &FCtx);   // TODO: Just call our own NtSetContextThread(What if it is hooked by someone)?
 }
 //------------------------------------------------------------------------------------      
 

@@ -15,24 +15,98 @@
  ETHREAD -> StartAddress ?
 
  https://www.codeproject.com/Articles/543542/Windows-x-system-service-hooks-and-advanced-debu
+ https://www.codeproject.com/Articles/543542/Windows-x64-system-service-hooks-and-advanced-debu
 
 					 
 TODO: 
- Unload inject DLL if it was loaded by a debugger and it is going to detach 
+ Unload inject DLL if it was loaded by a debugger and it is going to detach? 
  Intercept Any exception (Optional)
- Start target as Explorer.exe
+ Start a target as Explorer.exe
  Hardware BP only for an active thread (Last for GetThreadContext?)
  Inject into child processes
- Block constant Thread Suspend/Resume calls except for BP setting
- Kernel exception dispatcer hook(No hook of KiUserExceptionDispatcher and NtContinue)
- Use unly a low level WinAPI in GhostDbg.hpp
+ Block constant Thread Suspend/Resume calls by x64Dbg if it is already in DbgEvent handler?
+ Kernel exception dispatcher hook(No hook of KiUserExceptionDispatcher and NtContinue) (GhostDrv)
+ Make DebugBreak less intrusive (No CreateThread?) (APC?)
+ Alternate software BP support?
+ Single IPC buffer for all GhostDbg clients (Required for GhostDrv)
+ IPC SRW locks
+ Enable Config files
+ IDA compatibility
+ Fix NativeCreateThread on latest Windows 10
+ Fix extreme slowness on Windows XP (Sync problem? Fix for GhostDrv)   // https://communities.vmware.com/thread/466749
+ GInjer compatibility (Especially WOW64 debugging)
 
 ISSUES:
- Software breakpoints is very dangerous to set
+ Software breakpoints is very dangerous to set if not all threads are suspended on a Debug Event
  Because of SEH recursion a DBG context protection is not used(Find a way to mark a thread with RefCtr)
+
+//-----------------------------------------------------------------------------------------------------------------
+ MSVC compiler will always generate ExceptionDirectory for x64 builds. Need to use CLANG to make InjLib smaller: '/clang:-fno-unwind-tables'
+//---------------------------
+
+BOOL IsWow64Process2(HANDLE hProcess, USHORT *pProcessMachine, USHORT *pNativeMachine) --> NTSTATUS RtlWow64GetProcessMachines(HANDLE hProcess, USHORT *pProcessMachine, USHORT *pNativeMachine);
+
 //-----------------------------------------------------------------------------------------------------------------
 How DebugActiveProcess works:
   1) Suspends all process` threads
   2) Creates a remote thread at ntdll.dll:DbgUiRemoteBreakin
-  3) Suspends all other process` threads again (Including at DbgUiRemoteBreakin)   // Suspend count 1,2,2,2,...
+  3) Suspends all other process` threads again (Including at DbgUiRemoteBreakin)   // Suspend count is 1,2,2,2,...
 
+
+  ------------------------------------------
+  https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-resumethread
+
+  Note that while reporting debug events, all threads within the reporting process are frozen. 
+  Debuggers are expected to use the SuspendThread and ResumeThread functions to limit the set of threads that can execute within a process. 
+  By suspending all threads in a process except for the one reporting a debug event, it is possible to "single step" a single thread. 
+  The other threads are not released by a continue operation if they are suspended.
+
+  -----------------------------------------------------------------------
+  _chkstk Routine is a helper routine for the C compiler. For x86 compilers, _chkstk Routine is called when the local variables exceed 4K bytes; for x64 compilers it is 8K.
+
+  -------------------------------------
+  RtlDispatchException hooking:
+  1) Find a call to RtlDispatchException in KiUserExceptionDispatcher
+  2) Put a jump to a stub at beginning of RtlDispatchException (Save original instructions)
+
+  ----------------------------------------------------------------------
+  __int64 __fastcall Wow64NtCreateThread(_QWORD *a1, unsigned int a2, __int64 a3, __int64 aProcessHandle, __int64 a5, CONTEXT *a6, __int64 a7, char aSuspended)
+{
+  void *vProcessHandle; // rbp
+  struct _OBJECT_ATTRIBUTES *v9; // r15
+  unsigned int v10; // er14
+  void **v11; // rbx
+  __int64 result; // rax
+  NTSTATUS vStatus; // edi
+  __int16 vMachine; // [rsp+40h] [rbp-538h]
+  CONTEXT Dst; // [rsp+50h] [rbp-528h]
+
+  vProcessHandle = (void *)aProcessHandle;
+  v9 = (struct _OBJECT_ATTRIBUTES *)a3;
+  v10 = a2;
+  v11 = (void **)a1;
+  if ( !a1 || !a7 || !a6 )return 0xC000000Di64;
+  result = RtlWow64GetProcessMachines(aProcessHandle, &vMachine, 0i64);
+  if ( (int)result < 0 )return result;    
+  if ( vMachine )return 0xC0000022i64;   // ???????????????????????????????                            // Not IMAGE_FILE_MACHINE_UNKNOWN   // IsWow64Process is TRUE    
+  memset_0(&Dst, 0, 1232u);
+  Dst.Rip = LODWORD(a6->R8);
+  Dst.Rcx = LODWORD(a6->Rdi);
+  Dst.Rdx = HIDWORD(a6->Rbp);
+  Dst.R8 = HIDWORD(a6->R9);
+  Dst.ContextFlags = 0x100003;
+  vStatus = NtCreateThread(v11, v10, v9, vProcessHandle, (PCLIENT_ID)a5, &Dst, (PINITIAL_TEB)a7, 1u);
+  if ( vStatus < 0 )return (unsigned int)vStatus;
+  if ( vMachine == 0x14C && (unsigned __int16)RtlWow64GetCurrentMachine() == 0x14C )Wow64pCpuInitializeStartupContext((__int64)vProcessHandle, (__int64)*v11, (__int64)a6);
+  if ( !aSuspended )
+  {
+    vStatus = NtResumeThread(*v11, 0i64);
+    if ( vStatus < 0 )
+    {
+      NtTerminateThread(*v11, 0);
+      return (unsigned int)vStatus;
+    }
+  }
+  return 0i64;
+}
+  ---------------------------------------------------------------------- 

@@ -1,15 +1,29 @@
 
 #pragma once
- 
+/*
+  Copyright (c) 2020 Victor Sheinmann, Vicshann@gmail.com
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+  to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+  and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+  WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
+*/
+
 #include <intrin.h>
-#include <Windows.h>
+//#include <Windows.h>
 #include "Utils.h"
 #include "UniHook.hpp"
 #include "json.h"
-#include "FormatPE.h"
+#include "NtDllEx.hpp"
 #include "CompileTime.hpp"
 #include "InjDllLdr.hpp"
 #include "GhostDbg.hpp"
+#include "..\..\GlobalInjector\GInjer\LoaderCode.h"
 
 //====================================================================================
 #define CFGFILE    ".InjLib.jsn"
@@ -20,15 +34,16 @@ void _stdcall LoadConfiguration(void);
 void _stdcall SaveConfiguration(int BinFmt=-1);
 void _stdcall UnInitApplication(void);
 bool _stdcall InitApplication(void);
-int  _stdcall DbgUsrReqCallback(ShMem::CMessageIPC::SMsgHdr* Req, PVOID ArgA, UINT ArgB);
+int _fastcall DbgUsrReqCallback(ShMem::CMessageIPC::SMsgHdr* Req, PVOID ArgA, UINT ArgB);
 //------------------------------------------------------------------------------------
 bool _cdecl ProcExpDispBefore(volatile PVOID ArgA, volatile PVOID ArgB, volatile PVOID ArgC, volatile PVOID ArgD, volatile PVOID RetVal);
 bool _cdecl ProcExpDispAfter(volatile PVOID ArgA, volatile PVOID ArgB, volatile PVOID ArgC, volatile PVOID ArgD, volatile PVOID RetVal);
 //__declspec(noreturn) VOID NTAPI ProcRtlRestoreContext(PCONTEXT ContextRecord, PEXCEPTION_RECORD ExceptionRecord);
 //__declspec(noreturn) void _fastcall ProcKiUserExceptionDispatcher(void);
 //__declspec(noreturn) void NTAPI ProcLdrInitializeThunk(PVOID ArgA, PVOID ArgB, PVOID ArgC, PVOID ArgD);
+void _stdcall ProcLdrpInitialize(volatile PCONTEXT Ctx, volatile PVOID NtDllBase);
 NTSTATUS NTAPI ProcNtContinue(PCONTEXT ContextRecord, BOOLEAN TestAlert);
-//NTSTATUS NTAPI ProcNtTerminateProcess(HANDLE ProcessHandle, NTSTATUS ExitStatus);
+NTSTATUS NTAPI ProcNtTerminateProcess(HANDLE ProcessHandle, NTSTATUS ExitStatus);
 NTSTATUS NTAPI ProcNtTerminateThread(HANDLE ThreadHandle, NTSTATUS ExitStatus);
 NTSTATUS NTAPI ProcNtGetContextThread(HANDLE ThreadHandle, PCONTEXT Context);
 NTSTATUS NTAPI ProcNtSetContextThread(HANDLE ThreadHandle, PCONTEXT Context);

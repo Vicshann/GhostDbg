@@ -24,6 +24,9 @@
     <ClCompile Include="..\COMMON\Utils.cpp">
       <Filter>Common</Filter>
     </ClCompile>
+    <ClCompile Include="..\COMMON\RTL\gcvt.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="XDbgPlugin.h">
@@ -51,6 +54,9 @@
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="..\COMMON\UniHook.hpp">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\COMMON\NtDllEx.hpp">
       <Filter>Common</Filter>
     </ClInclude>
   </ItemGroup>
