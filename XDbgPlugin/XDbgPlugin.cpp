@@ -19,8 +19,8 @@
 #pragma comment(linker,"/NODEFAULTLIB")
 
 
-typedef ShMem  SHM;     
-typedef GhDbg  XNI;
+typedef NShMem  SHM;     
+typedef NGhDbg  XNI;
 
 // ---------- SETTINGS ------------------
 bool PLogOnly    = false;       // Just log usage of Debug API  
@@ -28,7 +28,7 @@ bool PEnabled    = false;       // Enable the GhostDbg plugin
 bool AllowInject = true;        // Allow to load inject DLL into a target process(Attach). Else only processes with already injected GhostDbg DLLs will be visible
 bool AllowInjNew = true;        // Allow to load inject DLL into a target process(Create).
 bool SuspendProc = true;        // It is safer to keep a target process suspended while IPC and GhostDbg Client initializing but some timeouts may be detected
-UINT InjFlags    = InjLdr::mfInjMap|InjLdr::mfRunRMTH|InjLdr::mfRawRMTH;
+UINT InjFlags    = NInjLdr::mfInjMap|NInjLdr::mfRunRMTH|NInjLdr::mfRawRMTH;
 UINT WaitForInj  = 3000;
 //---------------------------------------
                                  
@@ -94,7 +94,7 @@ wchar_t WorkFolder[MAX_PATH];
 
 //===========================================================================
 BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved) 
-{	
+{	 
  switch (ReasonCall)	    
   {			 
    case DLL_PROCESS_ATTACH:
@@ -110,7 +110,7 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
      NSTR::StrCopy(CfgFilePath, WorkFolder);
      NSTR::StrCopy(GetFileExt(CfgFilePath), L"ini");
 	
-     LoadConfiguration();	
+     LoadConfiguration();   
 	 if(LogMode & lmCons){AllocConsole();/*SetWinConsoleSizes(1000, 500, 1000, 500);*/}
 	 LOGMSG("Starting up... (Time=%016llX), Owner='%ls'", SysTimeToTime64(NNTDLL::GetSystemTime()), &StartUpDir);	
      TrimFilePath(StartUpDir);
@@ -131,7 +131,7 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
 }
 //====================================================================================
 void _stdcall LoadConfiguration(void)
-{                  
+{   
  LogMode       = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"LogMode",   LogMode,  CfgFilePath);
  PLogOnly      = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"PLogOnly",  PLogOnly, CfgFilePath);
  PEnabled      = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"PEnabled",  PEnabled, CfgFilePath);
@@ -140,12 +140,15 @@ void _stdcall LoadConfiguration(void)
  SuspendProc   = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"SuspendProc",  SuspendProc, CfgFilePath); 
  InjFlags      = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"InjectFlags",  InjFlags, CfgFilePath); 
  WaitForInj    = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"WaitForInj",  WaitForInj, CfgFilePath); 
-              
- PVOID pNtDll = GetNtDllBaseFast(); 
+    
+ LOGMSG("Initializing...");   
+ PVOID pNtDll = NPEFMT::GetNtDllBaseFast(); 
+ LOGMSG("SystemNtDllBase: %p", pNtDll);   
  NtDllSize = GetRealModuleSize(pNtDll);
  NtDllBase = VirtualAlloc(NULL,NtDllSize,MEM_COMMIT,PAGE_EXECUTE_READWRITE); 
- memcpy(NtDllBase,pNtDll,NtDllSize);
- LOGMSG("Clean copy of NtDll: %p", NtDllBase); 
+ LOGMSG("CopyNtDllBase=%p, NtDllSize=%08X", NtDllBase, NtDllSize);
+ CopyValidModuleMem(pNtDll, NtDllBase, NtDllSize);    // On Win7 x64 some regions of ntdll.dll are in reserved state 
+ LOGMSG("Done"); 
 }
 //------------------------------------------------------------------------------------
 void _stdcall SaveConfiguration(void)
@@ -190,8 +193,8 @@ void _cdecl MenuHandler(CBTYPE Type, PLUG_CB_MENUENTRY *info)
      SaveConfiguration();
     break;      
    case MENU_ID_USERAWTHREADS:
-     if(InjFlags & InjLdr::mfRawRMTH)InjFlags &= ~InjLdr::mfRawRMTH;
-       else InjFlags |= InjLdr::mfRawRMTH;  
+     if(InjFlags & NInjLdr::mfRawRMTH)InjFlags &= ~NInjLdr::mfRawRMTH;
+       else InjFlags |= NInjLdr::mfRawRMTH;  
      SaveConfiguration();
     break;          
    case MENU_ID_ABOUT: 
@@ -274,7 +277,7 @@ extern "C" __declspec(dllexport) void _cdecl plugsetup(PLUG_SETUPSTRUCT* setupSt
  plugin_menuentrysetchecked(PluginHandle,MENU_ID_CHK_CANINJ,AllowInject);
  plugin_menuentrysetchecked(PluginHandle,MENU_ID_CHK_CANINJNEW,AllowInjNew);
  plugin_menuentrysetchecked(PluginHandle,MENU_ID_SUSPPROCESS,SuspendProc);
- plugin_menuentrysetchecked(PluginHandle,MENU_ID_USERAWTHREADS,InjFlags & InjLdr::mfRawRMTH);
+ plugin_menuentrysetchecked(PluginHandle,MENU_ID_USERAWTHREADS,InjFlags & NInjLdr::mfRawRMTH);
 
  ICONDATA ico;
  UINT ResSize = 0;
@@ -418,7 +421,7 @@ int _stdcall InjectProcess(HANDLE hProcess, DWORD ProcessID)
 {
  CArr<BYTE> DllData;
  wchar_t DllPath[MAX_PATH];
- UINT Flags   = InjFlags|InjLdr::mfRawMod|fmCryHdr|fmCryImp|fmCryExp|fmCryRes;    // TODO: Inject method to cfg (Separated)
+ UINT Flags   = InjFlags|NInjLdr::mfRawMod|NPEFMT::fmCryHdr|NPEFMT::fmCryImp|NPEFMT::fmCryExp|NPEFMT::fmCryRes;    // TODO: Inject method to cfg (Separated)
  UINT ResSize = 0;
  PVOID InjLib = NULL;
  NSTR::StrCopy(DllPath, StartUpDir);
@@ -438,7 +441,7 @@ int _stdcall InjectProcess(HANDLE hProcess, DWORD ProcessID)
    else InjLib = GetResource(hInst, "InjLib", RT_RCDATA, &ResSize);
  if(!InjLib || !ResSize){DBGMSG("No InjLib found!"); return -1;}
  bool POpened = (hProcess == NULL);
- if(POpened)hProcess = InjLdr::OpenRemoteProcess(ProcessID, Flags, SuspendProc);   
+ if(POpened)hProcess = NInjLdr::OpenRemoteProcess(ProcessID, Flags, SuspendProc);   
  if(!hProcess)return -2; 
  if(SuspendProc)
   {
@@ -450,8 +453,8 @@ int _stdcall InjectProcess(HANDLE hProcess, DWORD ProcessID)
     }
      else hLstProc = hProcess;
   } 
- if(!POpened && NNTDLL::IsWinXPOrOlder())Flags &= ~InjLdr::mfRawRMTH;    // On Windows XP this Csr unfriendly thread will catch a process initialization APC!  // A DebugApi remote thread will also catch this APC and DebugApi threas is also not registered with Csr   // On latest Win10 raw threads can`t be injected in notepad.exe (Access Denied)
- int res = InjLdr::InjModuleIntoProcessAndExec(hProcess, InjLib, ResSize, Flags|InjLdr::mfResSyscall, 3, NULL, NULL, NtDllBase, 0x10000);   // mfResSyscall is required to avoid self interception    // Only .text(Data merged), .bss and .rdata 
+ if(!POpened && NNTDLL::IsWinXPOrOlder())Flags &= ~NInjLdr::mfRawRMTH;    // On Windows XP this Csr unfriendly thread will catch a process initialization APC!  // A DebugApi remote thread will also catch this APC and DebugApi threas is also not registered with Csr   // On latest Win10 raw threads can`t be injected in notepad.exe (Access Denied)
+ int res = NInjLdr::InjModuleIntoProcessAndExec(hProcess, InjLib, ResSize, Flags|NInjLdr::mfResSyscall, 3, NULL, NULL, NtDllBase, 0x10000);   // mfResSyscall is required to avoid self interception    // Only .text(Data merged), .bss and .rdata 
  if(POpened && !SuspendProc)CloseHandle(hProcess);     // Close after OpenRemoteProcess
  if(res < 0){DBGMSG("InjModuleIntoProcessAndExec failed with %i",res); if(SuspendProc)NtResumeProcess(hProcess); return -3;}    // Cannot terminate without a specific permission
  for(int ctr=WaitForInj;ctr > 0;ctr-=100)

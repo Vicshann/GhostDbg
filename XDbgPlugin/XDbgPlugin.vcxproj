@@ -352,8 +352,9 @@ copy /Y "$(OutDir)$(TargetName)$(TargetExt)" "$(SolutionDir)BUILD\RELEASE\$(Solu
     <ClCompile Include="XDbgPlugin.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\COMMON\FormatPE.h" />
-    <ClInclude Include="..\COMMON\HDE.h" />
+    <ClInclude Include="..\COMMON\Common.hpp" />
+    <ClInclude Include="..\COMMON\FormatPE.hpp" />
+    <ClInclude Include="..\COMMON\HDE.hpp" />
     <ClInclude Include="..\COMMON\InjDllLdr.hpp" />
     <ClInclude Include="..\COMMON\NtDllEx.hpp" />
     <ClInclude Include="..\COMMON\ShMemIPC.hpp" />

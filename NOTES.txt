@@ -32,9 +32,9 @@ TODO:
  IPC SRW locks
  Enable Config files
  IDA compatibility
- Fix NativeCreateThread on latest Windows 10
  Fix extreme slowness on Windows XP (Sync problem? Fix for GhostDrv)   // https://communities.vmware.com/thread/466749
  GInjer compatibility (Especially WOW64 debugging)
+ Wait for attach and ignore events until that (GInjer, requires config)
 
 ISSUES:
  Software breakpoints is very dangerous to set if not all threads are suspended on a Debug Event

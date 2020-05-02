@@ -14,15 +14,6 @@
   WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
 */
 
-#include <intrin.h>
-//#include <Windows.h>
-#include "Utils.h"
-#include "UniHook.hpp"
-#include "json.h"
-#include "NtDllEx.hpp"
-#include "CompileTime.hpp"
-#include "InjDllLdr.hpp"
-#include "GhostDbg.hpp"
 #include "..\..\GlobalInjector\GInjer\LoaderCode.h"
 
 //====================================================================================
@@ -34,7 +25,7 @@ void _stdcall LoadConfiguration(void);
 void _stdcall SaveConfiguration(int BinFmt=-1);
 void _stdcall UnInitApplication(void);
 bool _stdcall InitApplication(void);
-int _fastcall DbgUsrReqCallback(ShMem::CMessageIPC::SMsgHdr* Req, PVOID ArgA, UINT ArgB);
+int _fastcall DbgUsrReqCallback(NShMem::CMessageIPC::SMsgHdr* Req, PVOID ArgA, UINT ArgB);
 //------------------------------------------------------------------------------------
 bool _cdecl ProcExpDispBefore(volatile PVOID ArgA, volatile PVOID ArgB, volatile PVOID ArgC, volatile PVOID ArgD, volatile PVOID RetVal);
 bool _cdecl ProcExpDispAfter(volatile PVOID ArgA, volatile PVOID ArgB, volatile PVOID ArgC, volatile PVOID ArgD, volatile PVOID RetVal);

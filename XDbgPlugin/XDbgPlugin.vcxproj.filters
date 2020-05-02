@@ -35,16 +35,10 @@
     <ClInclude Include="..\COMMON\ThirdParty\ntdll\ntdll.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="..\COMMON\FormatPE.h">
-      <Filter>Common</Filter>
-    </ClInclude>
     <ClInclude Include="..\COMMON\ShMemIPC.hpp">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="..\COMMON\Utils.h">
-      <Filter>Common</Filter>
-    </ClInclude>
-    <ClInclude Include="..\COMMON\HDE.h">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="..\COMMON\InjDllLdr.hpp">
@@ -57,6 +51,15 @@
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="..\COMMON\NtDllEx.hpp">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\COMMON\Common.hpp">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\COMMON\FormatPE.hpp">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\COMMON\HDE.hpp">
       <Filter>Common</Filter>
     </ClInclude>
   </ItemGroup>

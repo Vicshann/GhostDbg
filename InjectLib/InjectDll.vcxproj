@@ -359,10 +359,11 @@ copy /Y "$(OutDir)$(TargetName)$(TargetExt)" "$(SolutionDir)BUILD\RELEASE\$(Solu
     <ClCompile Include="InjectDll.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\COMMON\Common.hpp" />
     <ClInclude Include="..\COMMON\CompileTime.hpp" />
-    <ClInclude Include="..\COMMON\FormatPE.h" />
+    <ClInclude Include="..\COMMON\FormatPE.hpp" />
     <ClInclude Include="..\COMMON\GhostDbg.hpp" />
-    <ClInclude Include="..\COMMON\HDE.h" />
+    <ClInclude Include="..\COMMON\HDE.hpp" />
     <ClInclude Include="..\COMMON\InjDllLdr.hpp" />
     <ClInclude Include="..\COMMON\json.h" />
     <ClInclude Include="..\COMMON\MiniString.h" />
