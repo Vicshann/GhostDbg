@@ -486,9 +486,9 @@ NTSTATUS NTAPI ProcNtMapViewOfSection(HANDLE SectionHandle, HANDLE ProcessHandle
 {                
  NTSTATUS res = HookNtMapViewOfSection.OrigProc(SectionHandle,ProcessHandle,BaseAddress,ZeroBits,CommitSize,SectionOffset,ViewSize,InheritDisposition,AllocationType,Win32Protect);    // May return STATUS_IMAGE_NOT_AT_BASE
  if((res >= 0) && BaseAddress && *BaseAddress && ViewSize && *ViewSize)    
-  {            
+  {                                                       
    DBGMSG("Module: Status=%08X, SectionHandle=%p, BaseAddress=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,*BaseAddress,*ViewSize,AllocationType,Win32Protect);     
-   if(Dbg && Dbg->IsActive() && (Win32Protect == PAGE_READWRITE) && (SuspWaitAttachLd || Dbg->IsDbgAttached()) && NNTDLL::IsCurrentProcess(ProcessHandle) && NPEFMT::IsValidPEHeaderBlk(*BaseAddress, Dbg->IsMemAvailable(*BaseAddress)))   // <<< Duplicate mapping causes BPs to be set again and never removed if this module is already loaded(If this is not caused by LdrLoadDll)!
+   if(Dbg && Dbg->IsActive() && ((Win32Protect == PAGE_READWRITE)||(Win32Protect == PAGE_READONLY)) && (SuspWaitAttachLd || Dbg->IsDbgAttached()) && NNTDLL::IsCurrentProcess(ProcessHandle) && NPEFMT::IsValidPEHeaderBlk(*BaseAddress, Dbg->IsMemAvailable(*BaseAddress)))   // <<< Duplicate mapping causes BPs to be set again and never removed if this module is already loaded(If this is not caused by LdrLoadDll)!  // New .NET uses PAGE_READONLY
     {
      Dbg->Report_LOAD_DLL_DEBUG_INFO(NtCurrentTeb(), *BaseAddress);  // NOTE: This is done before PE configuration by LdrLoadDll  // Events:TLS Callbacks must be disabled or xg4dbg will crash in 'cbLoadDll{ auto modInfo = ModInfoFromAddr(duint(base));}' (because it won`t check for NULL) if this mapping will be unmapped too soon
     }
