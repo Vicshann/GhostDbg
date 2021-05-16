@@ -20,7 +20,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{5B70EAFD-1442-4542-8DE2-E7E3832E407C}</ProjectGuid>
-    <RootNamespace>TricksLib</RootNamespace>
+    <RootNamespace>ToolDll</RootNamespace>
     <Keyword>Win32Proj</Keyword>
     <ProjectName>InjectDll</ProjectName>
     <WindowsTargetPlatformVersion>7.0</WindowsTargetPlatformVersion>

@@ -28,8 +28,9 @@ bool PEnabled    = false;       // Enable the GhostDbg plugin
 bool AllowInject = true;        // Allow to load inject DLL into a target process(Attach). Else only processes with already injected GhostDbg DLLs will be visible
 bool AllowInjNew = true;        // Allow to load inject DLL into a target process(Create).
 bool SuspendProc = true;        // It is safer to keep a target process suspended while IPC and GhostDbg Client initializing but some timeouts may be detected
-UINT InjFlags    = NInjLdr::mfInjMap|NInjLdr::mfRunRMTH|NInjLdr::mfRawRMTH;
-UINT WaitForInj  = 3000;
+bool SingleCore  = false;
+UINT InjFlags    = NInjLdr::mfInjMap|NInjLdr::mfRunRMTH|NInjLdr::mfRawRMTH|NInjLdr::mfNoThreadReport;
+UINT WaitForInj  = 5000;
 //---------------------------------------
                                  
 PHOOK(ProcNtClose) HookNtClose;        
@@ -137,7 +138,8 @@ void _stdcall LoadConfiguration(void)
  PEnabled      = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"PEnabled",  PEnabled, CfgFilePath);
  AllowInject   = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"AllowInject",  AllowInject, CfgFilePath); 
  AllowInjNew   = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"AllowInjNew",  AllowInjNew, CfgFilePath);   
- SuspendProc   = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"SuspendProc",  SuspendProc, CfgFilePath); 
+ SuspendProc   = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"SuspendProc",  SuspendProc, CfgFilePath);     
+ SingleCore    = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"SingleCore",  SingleCore, CfgFilePath);
  InjFlags      = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"InjectFlags",  InjFlags, CfgFilePath); 
  WaitForInj    = INIRefreshValueInt<PWSTR>(CFGSECNAME, L"WaitForInj",  WaitForInj, CfgFilePath); 
     
@@ -159,6 +161,7 @@ void _stdcall SaveConfiguration(void)
  INISetValueInt<PWSTR>(CFGSECNAME, L"AllowInject", AllowInject, CfgFilePath);  
  INISetValueInt<PWSTR>(CFGSECNAME, L"AllowInjNew", AllowInjNew, CfgFilePath);
  INISetValueInt<PWSTR>(CFGSECNAME, L"SuspendProc", SuspendProc, CfgFilePath);
+ INISetValueInt<PWSTR>(CFGSECNAME, L"SingleCore", SingleCore, CfgFilePath);
  INISetValueInt<PWSTR>(CFGSECNAME, L"InjectFlags", InjFlags, CfgFilePath);
  INISetValueInt<PWSTR>(CFGSECNAME, L"WaitForInj", WaitForInj, CfgFilePath);
 }
@@ -191,12 +194,21 @@ void _cdecl MenuHandler(CBTYPE Type, PLUG_CB_MENUENTRY *info)
    case MENU_ID_SUSPPROCESS:
      SuspendProc = !SuspendProc;
      SaveConfiguration();
-    break;      
+    break;  
+   case MENU_ID_FORCESINGLECORE:
+     SingleCore = !SingleCore;
+     SaveConfiguration();
+    break;                       
    case MENU_ID_USERAWTHREADS:
      if(InjFlags & NInjLdr::mfRawRMTH)InjFlags &= ~NInjLdr::mfRawRMTH;
        else InjFlags |= NInjLdr::mfRawRMTH;  
      SaveConfiguration();
-    break;          
+    break;  
+   case MENU_ID_NOTHREADREPORTS:
+     if(InjFlags & NInjLdr::mfNoThreadReport)InjFlags &= ~NInjLdr::mfNoThreadReport;
+       else InjFlags |= NInjLdr::mfNoThreadReport;  
+     SaveConfiguration();
+    break;       
    case MENU_ID_ABOUT: 
      {  
       char Hdr[64];                                     // XDBGPLG_BUILD
@@ -266,7 +278,9 @@ extern "C" __declspec(dllexport) void _cdecl plugsetup(PLUG_SETUPSTRUCT* setupSt
  plugin_menuaddentry(setupStruct->hMenu, MENU_ID_CHK_CANINJNEW, "Allow Inject New");  // Create Process
 // plugin_menuaddentry(setupStruct->hMenu, MENU_ID_CHK_CANEJ, "Allow Ejection");    // On Detach, if DLL has been injected
  plugin_menuaddentry(setupStruct->hMenu, MENU_ID_SUSPPROCESS, "Suspend Process");
+ plugin_menuaddentry(setupStruct->hMenu, MENU_ID_FORCESINGLECORE, "Force Single Core");
  plugin_menuaddentry(setupStruct->hMenu, MENU_ID_USERAWTHREADS, "Use Raw Threads");     
+ plugin_menuaddentry(setupStruct->hMenu, MENU_ID_NOTHREADREPORTS, "No Thread Reports"); 
 
  plugin_menuaddseparator(setupStruct->hMenu);
  DbgCliMenu = plugin_menuadd(setupStruct->hMenu, "Client Config");
@@ -276,8 +290,10 @@ extern "C" __declspec(dllexport) void _cdecl plugsetup(PLUG_SETUPSTRUCT* setupSt
  plugin_menuentrysetchecked(PluginHandle,MENU_ID_ENABLED,PEnabled);
  plugin_menuentrysetchecked(PluginHandle,MENU_ID_CHK_CANINJ,AllowInject);
  plugin_menuentrysetchecked(PluginHandle,MENU_ID_CHK_CANINJNEW,AllowInjNew);
- plugin_menuentrysetchecked(PluginHandle,MENU_ID_SUSPPROCESS,SuspendProc);
+ plugin_menuentrysetchecked(PluginHandle,MENU_ID_SUSPPROCESS,SuspendProc);         
+ plugin_menuentrysetchecked(PluginHandle,MENU_ID_FORCESINGLECORE,SingleCore);
  plugin_menuentrysetchecked(PluginHandle,MENU_ID_USERAWTHREADS,InjFlags & NInjLdr::mfRawRMTH);
+ plugin_menuentrysetchecked(PluginHandle,MENU_ID_NOTHREADREPORTS,InjFlags & NInjLdr::mfNoThreadReport);
 
  ICONDATA ico;
  UINT ResSize = 0;
@@ -441,8 +457,11 @@ int _stdcall InjectProcess(HANDLE hProcess, DWORD ProcessID)
    else InjLib = GetResource(hInst, "InjLib", RT_RCDATA, &ResSize);
  if(!InjLib || !ResSize){DBGMSG("No InjLib found!"); return -1;}
  bool POpened = (hProcess == NULL);
- if(POpened)hProcess = NInjLdr::OpenRemoteProcess(ProcessID, Flags, SuspendProc);   
+ DWORD ExtraFlags = 0;
+ if(SingleCore)ExtraFlags |= PROCESS_SET_INFORMATION;
+ if(POpened)hProcess = NInjLdr::OpenRemoteProcess(ProcessID, Flags, SuspendProc, ExtraFlags);   
  if(!hProcess)return -2; 
+ if(SingleCore)ForceProcessSingleCore(hProcess);
  if(SuspendProc)
   {
    if(!POpened)
@@ -454,7 +473,7 @@ int _stdcall InjectProcess(HANDLE hProcess, DWORD ProcessID)
      else hLstProc = hProcess;
   } 
  if(!POpened && NNTDLL::IsWinXPOrOlder())Flags &= ~NInjLdr::mfRawRMTH;    // On Windows XP this Csr unfriendly thread will catch a process initialization APC!  // A DebugApi remote thread will also catch this APC and DebugApi threas is also not registered with Csr   // On latest Win10 raw threads can`t be injected in notepad.exe (Access Denied)
- int res = NInjLdr::InjModuleIntoProcessAndExec(hProcess, InjLib, ResSize, Flags|NInjLdr::mfResSyscall, 3, NULL, NULL, NtDllBase, 0x10000);   // mfResSyscall is required to avoid self interception    // Only .text(Data merged), .bss and .rdata 
+ int res = NInjLdr::InjModuleIntoProcessAndExec(hProcess, InjLib, ResSize, Flags|NInjLdr::mfResSyscall, 3, NULL, NULL, NtDllBase, 0x20000);   // mfResSyscall is required to avoid self interception    // Only .text(Data merged), .bss and .rdata   // !!! Something at LdrpInitializeThunk requires stack size not less than 0x20000 or the thread will be silently terminated unless it is watched in 'Process Explorer' or a debugger !!!
  if(POpened && !SuspendProc)CloseHandle(hProcess);     // Close after OpenRemoteProcess
  if(res < 0){DBGMSG("InjModuleIntoProcessAndExec failed with %i",res); if(SuspendProc)NtResumeProcess(hProcess); return -3;}    // Cannot terminate without a specific permission
  for(int ctr=WaitForInj;ctr > 0;ctr-=100)

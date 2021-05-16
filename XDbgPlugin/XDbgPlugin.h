@@ -23,13 +23,15 @@
 #define XDBGPLG_NAME     "GhostDbg"
 #define XDBGPLG_BUILD    __DATE__ " - " __TIME__
 
-#define MENU_ID_ENABLED		  1
-#define MENU_ID_ABOUT		  2
-#define MENU_ID_CHK_CANINJ    3
-#define MENU_ID_CHK_CANINJNEW 4
-#define MENU_ID_SUSPPROCESS   5
-#define MENU_ID_USERAWTHREADS 6
-#define MENU_ID_DBGCLIENT     16
+#define MENU_ID_ENABLED		    1
+#define MENU_ID_ABOUT		    2
+#define MENU_ID_CHK_CANINJ      3
+#define MENU_ID_CHK_CANINJNEW   4
+#define MENU_ID_SUSPPROCESS     5
+#define MENU_ID_USERAWTHREADS   6
+#define MENU_ID_NOTHREADREPORTS 7
+#define MENU_ID_FORCESINGLECORE 8
+#define MENU_ID_DBGCLIENT       16
 
 //====================================================================================
 

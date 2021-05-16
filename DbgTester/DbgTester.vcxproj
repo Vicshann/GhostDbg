@@ -22,7 +22,7 @@
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{9161E0FA-8D9B-4EBE-AAD0-BB0CE1154945}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>Dropper</RootNamespace>
+    <RootNamespace>TestExe</RootNamespace>
     <WindowsTargetPlatformVersion>7.0</WindowsTargetPlatformVersion>
     <ProjectName>DbgTester</ProjectName>
   </PropertyGroup>
@@ -266,6 +266,7 @@
     <ClInclude Include="DbgTester.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\COMMON\RTL\gcvt.cpp" />
     <ClCompile Include="..\COMMON\Utils.cpp" />
     <ClCompile Include="DbgTester.cpp" />
   </ItemGroup>

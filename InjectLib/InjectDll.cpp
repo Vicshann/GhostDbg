@@ -103,13 +103,13 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)  // 
     }
    if(ModDesc)
     {
-     hModule = (HMODULE)NInjLdr::ReflectiveRelocateSelf(hModule, (LdrDesc)?((PVOID)LdrDesc->NtDllBase):(NULL));  // Allocate to a new buffer  // Loaded by GInjer. Current memory block will be deallocated by GInjer. Current thread is App`s main thread or Loader thread                      
+     hModule = (HMODULE)NInjLdr::ReflectiveRelocateSelf(hModule, (LdrDesc)?((PVOID)LdrDesc->NtDllBase):(NULL));  // Allocate to a new buffer  // Loaded by GInjer. Current memory block will be deallocated by GInjer. Current thread is App`s main thread or GInjer`s Loader thread                      
 #ifdef _DEBUG
      LdrLogInit(ModDesc); 
      LDRLOG("Hello from %p, %08X", hModule, ModDesc->Flags);  // LDRLOG("Hello from %p, %08X: %ls", hModule, ModDesc->Flags, &ModDesc->ModulePath);   // '%ls' will crash if called before the process initioalization (Load before loader)
 #endif
     }
-     else hModule = (HMODULE)NInjLdr::PEImageInitialize(hModule);      // Relocate in current buffer (Must be large enough)       // Loaded by a Debugger plugin
+//     else hModule = (HMODULE)NInjLdr::PEImageInitialize(hModule);      // Relocate in current buffer (Must be large enough)       // Loaded by a Debugger plugin   // What was the reason to do self initialization here????  // It is much harded to debug the pluging when it is self relocates sections
    if(!NotReusableTh)hIpcTh = NtCurrentThread;   // Can be changed later, before Start, if needed   // A reusable injected remote thread  // Assign globals after relocation
    if(ModDesc && !NotOwnThread)MainThId = NtCurrentThreadId();    // Main thread by GInjer
    ReasonCall  = DLL_PROCESS_ATTACH;
@@ -197,9 +197,9 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)  // 
         }
        DBGMSG("Done hiding!");
       } */
-     if(!InitApplication())return false; 
+     bool res = InitApplication(); 
      if(ModInjFlags & NInjLdr::mfRunRMTH){DBGMSG("Terminating injected thread(this): %u", NtCurrentThreadId()); NtTerminateThread(NtCurrentThread,0);}     // Stack frame may be incorrect
-     return true;  //dres;
+     return res; 
     }
      break;									
    case DLL_THREAD_ATTACH:
@@ -256,6 +256,7 @@ void _stdcall LoadConfiguration(void)   // Avoid any specific file access here f
  if(BinFmt)Root.ToBinary(str,true);
  Root.ToString(str,true);
  str.ToFile(CfgFilePath);  */
+ DBGMSG("Exit");
 }
 //------------------------------------------------------------------------------------
 void _stdcall SaveConfiguration(int BinFmt)
@@ -319,7 +320,7 @@ bool _stdcall InitApplication(void)
  ExpDispHook.SetHook(ProcExpDispBefore, ProcExpDispAfter);                          // Debugger core function
  LdrpInitHook.SetHook(ProcLdrpInitialize);                                          // Optional: HookNtContinue can do the job but threads will be reported after initialization
  DBGMSG("Hooks set: hIpcTh=%p, MainThId=%u",hIpcTh, MainThId);  
- Dbg->Start(IPCSize, hIpcTh, NULL, MainThId, (hIpcTh != NtCurrentThread)?NtCurrentThreadId():0);     // Start it from DLL Main to avoid of similair DLL being loaded again    // Exclude current temporary thread
+ Dbg->Start(IPCSize, hIpcTh, NULL, MainThId, (hIpcTh != NtCurrentThread)?NtCurrentThreadId():0);     // Start it from DLL Main to avoid of similair DLL being loaded again    // Exclude current temporary thread (GInjer)
  DBGMSG("IPC started");
  return true;
 }                                               

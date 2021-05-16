@@ -20,7 +20,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{157E494D-21B0-493D-A1F4-A8927CF410BF}</ProjectGuid>
-    <RootNamespace>TricksLib</RootNamespace>
+    <RootNamespace>PluginDll</RootNamespace>
     <Keyword>Win32Proj</Keyword>
     <ProjectName>XDbgPlugin</ProjectName>
     <WindowsTargetPlatformVersion>7.0</WindowsTargetPlatformVersion>

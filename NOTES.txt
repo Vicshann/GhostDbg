@@ -69,7 +69,12 @@ How DebugActiveProcess works:
   1) Find a call to RtlDispatchException in KiUserExceptionDispatcher
   2) Put a jump to a stub at beginning of RtlDispatchException (Save original instructions)
 
-  ----------------------------------------------------------------------
+----------------------------------------------------------------------
+BOOL __stdcall RtlIsCurrentThreadAttachExempt()
+{
+  return NtCurrentTeb()->SameTebFlags & 8 && !(NtCurrentTeb()->SameTebFlags & 0x20);
+}
+----------------------------------------------------------------------
   __int64 __fastcall Wow64NtCreateThread(_QWORD *a1, unsigned int a2, __int64 a3, __int64 aProcessHandle, __int64 a5, CONTEXT *a6, __int64 a7, char aSuspended)
 {
   void *vProcessHandle; // rbp
