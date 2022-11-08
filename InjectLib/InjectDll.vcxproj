@@ -135,7 +135,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalOptions>/Gs100000000 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/permissive  /Gs100000000 %(AdditionalOptions)</AdditionalOptions>
       <ControlFlowGuard>false</ControlFlowGuard>
     </ClCompile>
     <Link>
@@ -197,7 +197,7 @@
       <OmitFramePointers>false</OmitFramePointers>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalOptions>/Gs100000000 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/permissive  /Gs100000000 %(AdditionalOptions)</AdditionalOptions>
       <ControlFlowGuard>false</ControlFlowGuard>
     </ClCompile>
     <Link>
@@ -254,7 +254,7 @@
       <CompileAs>Default</CompileAs>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalOptions>/Gs100000000 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/permissive  /Gs100000000 %(AdditionalOptions)</AdditionalOptions>
       <ControlFlowGuard>false</ControlFlowGuard>
     </ClCompile>
     <Link>
@@ -317,7 +317,7 @@ copy /Y "$(OutDir)$(TargetName)$(TargetExt)" "$(SolutionDir)BUILD\RELEASE\$(Solu
       <CompileAs>Default</CompileAs>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalOptions>/Gs100000000 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/permissive  /Gs100000000 %(AdditionalOptions)</AdditionalOptions>
       <ControlFlowGuard>false</ControlFlowGuard>
     </ClCompile>
     <Link>

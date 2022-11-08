@@ -218,6 +218,7 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)  // 
  return true;
 }
 //====================================================================================
+// TODO: Store configs and logs in a debugger`s directory(receive a path?)
 void _stdcall LoadConfiguration(void)   // Avoid any specific file access here for now
 { 
 #ifdef _DEBUG
@@ -475,32 +476,43 @@ bool _cdecl ProcExpDispAfter(volatile PVOID ArgA, volatile PVOID ArgB, volatile 
 }
 //------------------------------------------------------------------------------------
 // SEC_FILE             0x0800000     
-// SEC_IMAGE            0x1000000     
+// SEC_IMAGE            0x1000000    // Use NtQuerySection to verify the section is SEC_IMAGE ?
 // SEC_PROTECTED_IMAGE  0x2000000  
 //
-// Normal Dll map: AllocationType=00800000[MEM_ROTATE], Win32Protect=00000004[PAGE_READWRITE]    // Win10
+// Normal Dll map: AllocationType=00800000[MEM_ROTATE], Win32Protect=00000004[PAGE_READWRITE] (PAGE_EXECUTE_WRITECOPY for .NET)   // Win10
 //
 // WinXPx32: ZwMapViewOfSection(v88, -1, (int)&v89, 0, 0, 0, (int)&v86, 1, 0, 4);
 // Win7x64:  ZwMapViewOfSection(v9, -1i64, v13, 0i64, 0i64, 0i64, v12, 1, v10, 4);
 //
 NTSTATUS NTAPI ProcNtMapViewOfSection(HANDLE SectionHandle, HANDLE ProcessHandle, PVOID* BaseAddress, ULONG_PTR ZeroBits, SIZE_T CommitSize, PLARGE_INTEGER SectionOffset, PSIZE_T ViewSize, SECTION_INHERIT InheritDisposition, ULONG AllocationType, ULONG Win32Protect)    // NOTE: A detectable hook!
-{                
- NTSTATUS res = HookNtMapViewOfSection.OrigProc(SectionHandle,ProcessHandle,BaseAddress,ZeroBits,CommitSize,SectionOffset,ViewSize,InheritDisposition,AllocationType,Win32Protect);    // May return STATUS_IMAGE_NOT_AT_BASE
- if((res >= 0) && BaseAddress && *BaseAddress && ViewSize && *ViewSize)    
-  {                                                       
-   DBGMSG("Module: Status=%08X, SectionHandle=%p, BaseAddress=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,*BaseAddress,*ViewSize,AllocationType,Win32Protect);     
-   if(Dbg && Dbg->IsActive() && ((Win32Protect == PAGE_READWRITE)||(Win32Protect == PAGE_READONLY)) && (SuspWaitAttachLd || Dbg->IsDbgAttached()) && NNTDLL::IsCurrentProcess(ProcessHandle) && NPEFMT::IsValidPEHeaderBlk(*BaseAddress, Dbg->IsMemAvailable(*BaseAddress)))   // <<< Duplicate mapping causes BPs to be set again and never removed if this module is already loaded(If this is not caused by LdrLoadDll)!  // New .NET uses PAGE_READONLY
-    {
-     Dbg->Report_LOAD_DLL_DEBUG_INFO(NtCurrentTeb(), *BaseAddress);  // NOTE: This is done before PE configuration by LdrLoadDll  // Events:TLS Callbacks must be disabled or xg4dbg will crash in 'cbLoadDll{ auto modInfo = ModInfoFromAddr(duint(base));}' (because it won`t check for NULL) if this mapping will be unmapped too soon
+{ 
+// static const DWORD ProtMsk = /*PAGE_READONLY|*/PAGE_READWRITE|PAGE_WRITECOPY|PAGE_EXECUTE_READ|PAGE_EXECUTE_READWRITE|PAGE_EXECUTE_WRITECOPY;   // (Win32Protect & ProtMsk)  // NOTE: .NET (With Tnemida?) uses PAGE_EXECUTE_WRITECOPY (Maps the same module several times)   // I.E. rpcss.dll is mapped with PAGE_READONLY or just read by someone (Protection may be changed later)
+         
+ NTSTATUS res = HookNtMapViewOfSection.OrigProc(SectionHandle,ProcessHandle,BaseAddress,ZeroBits,CommitSize,SectionOffset,ViewSize,InheritDisposition,AllocationType,Win32Protect);    // May return STATUS_IMAGE_NOT_AT_BASE or STATUS_IMAGE_MACHINE_TYPE_MISMATCH (.NET)
+
+ if((res >= 0) && BaseAddress && *BaseAddress && ViewSize && *ViewSize && (!SectionOffset || !SectionOffset->QuadPart))     // NOTE: DllLoader does not set SectionOffset for now in any version of Windows
+  {  
+   bool IsMappedPE = false;
+   SIZE_T MemLen = NNTDLL::IsMemAvailable(*BaseAddress, &IsMappedPE);   // Ignore anything but real PE image mappings (Which still may be not properly initialized) 
+   if(IsMappedPE && MemLen && NNTDLL::IsCurrentProcess(ProcessHandle))
+   {                                                 
+     DBGMSG("Module: Status=%08X, SectionHandle=%p, BaseAddress=%p, SectionOffset=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,*BaseAddress,SectionOffset,*ViewSize,AllocationType,Win32Protect);     
+     if(Dbg && Dbg->IsActive() /*(Win32Protect & ProtMsk)*/ && (SuspWaitAttachLd || Dbg->IsDbgAttached()) && NPEFMT::IsValidPEHeaderBlk(*BaseAddress, MemLen))   // <<< Duplicate mapping causes BPs to be set again and never removed if this module is already loaded(If this is not caused by LdrLoadDll)!  // New .NET uses PAGE_READONLY
+      {
+       Dbg->Report_LOAD_DLL_DEBUG_INFO(NtCurrentTeb(), *BaseAddress);  // NOTE: This is done before PE configuration by LdrLoadDll  // Events:TLS Callbacks must be disabled or xg4dbg will crash in 'cbLoadDll{ auto modInfo = ModInfoFromAddr(duint(base));}' (because it won`t check for NULL) if this mapping will be unmapped too soon
+      }
     }
   } 
+   else {DBGMSG("XMapping: Status=%08X, BaseAddress=%p, SectionOffset=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,*BaseAddress,SectionOffset,*ViewSize,AllocationType,Win32Protect);}
 //   else {DBGMSG("Status=%08X, SectionHandle=%p, ViewSize=%08X, AllocationType=%08X, Win32Protect=%08X",res,SectionHandle,ViewSize,AllocationType,Win32Protect);}
  return res;
 }
 //------------------------------------------------------------------------------------
 NTSTATUS NTAPI ProcNtUnmapViewOfSection(HANDLE ProcessHandle, PVOID BaseAddress)   // NOTE: A detectable hook!
 {
- if(NNTDLL::IsCurrentProcess(ProcessHandle) && NPEFMT::IsValidPEHeaderBlk(BaseAddress, Dbg->IsMemAvailable(BaseAddress)))
+ bool IsMappedPE = false;
+ SIZE_T MemLen = NNTDLL::IsMemAvailable(BaseAddress, &IsMappedPE);   // Ignore anything but real PE image mappings (Which still may be not properly initialized)
+ if(NNTDLL::IsCurrentProcess(ProcessHandle) && IsMappedPE && NPEFMT::IsValidPEHeaderBlk(BaseAddress, MemLen))
   {
    DBGMSG("BaseAddress=%p",BaseAddress);    
    if(Dbg && Dbg->IsActive() && (SuspWaitAttachLd || Dbg->IsDbgAttached()) && Dbg->IsOtherConnections())Dbg->Report_UNLOAD_DLL_DEBUG_EVENT(NtCurrentTeb(), BaseAddress); 

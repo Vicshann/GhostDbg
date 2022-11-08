@@ -69,6 +69,7 @@ ULONG NtDllSize = 0;
 HMODULE hInst = NULL;
 HANDLE  hSuspTh = NULL;
 HANDLE  hLstProc = NULL;
+HANDLE hTempObjDir = NULL;
 DWORD  DbgProcID = 0; 
 DWORD  LstProcID = 0;   // After termination, to prevent reopen try and wait on unavailable IPC
 HWND   hXDbgWnd = NULL;
@@ -111,7 +112,8 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)
      NSTR::StrCopy(CfgFilePath, WorkFolder);
      NSTR::StrCopy(GetFileExt(CfgFilePath), L"ini");
 	
-     LoadConfiguration();   
+     LoadConfiguration(); 
+     CreateUntrustedNtObjDir(&hTempObjDir, L"TempNamedObjects");    // Need for injection into low/untrusted integrity processes   // TODO: Generate this name, same as in ShMemIPC
 	 if(LogMode & lmCons){AllocConsole();/*SetWinConsoleSizes(1000, 500, 1000, 500);*/}
 	 LOGMSG("Starting up... (Time=%016llX), Owner='%ls'", SysTimeToTime64(NNTDLL::GetSystemTime()), &StartUpDir);	
      TrimFilePath(StartUpDir);

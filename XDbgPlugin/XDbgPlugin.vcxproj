@@ -138,6 +138,7 @@
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalOptions>/permissive %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <ShowProgress>LinkVerboseLib</ShowProgress>
@@ -196,6 +197,7 @@
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalOptions>/permissive %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <ShowProgress>LinkVerboseLib</ShowProgress>
@@ -251,6 +253,7 @@
       <CompileAs>CompileAsCpp</CompileAs>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalOptions>/permissive %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <ShowProgress>LinkVerboseLib</ShowProgress>
@@ -312,6 +315,7 @@ copy /Y "$(OutDir)$(TargetName)$(TargetExt)" "$(SolutionDir)BUILD\RELEASE\$(Solu
       <CompileAs>CompileAsCpp</CompileAs>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalOptions>/permissive %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <ShowProgress>LinkVerboseLib</ShowProgress>
