@@ -14,7 +14,13 @@
   WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
 */
 
+#if __has_include ("..\..\GlobalInjector\GInjer\LoaderCode.h")
+#define _HAVE_GINGER
 #include "..\..\GlobalInjector\GInjer\LoaderCode.h"
+#else
+#include "Common.hpp"
+#define DLL_REFLECTIVE_LOAD (DLL_THREAD_DETACH + 9)
+#endif
 
 //====================================================================================
 #define CFGFILE    ".InjLib.jsn"

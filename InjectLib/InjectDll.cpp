@@ -86,9 +86,13 @@ wchar_t WorkFolder[MAX_PATH];
 //===========================================================================
 BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)  // ReasonCall and lpReserved is invalid for mfRunUAPC,mfRunRMTH,mfRunThHij
 {
+#ifdef _HAVE_GINGER
  SModDesc* ModDesc = ModDescFromCurTh();        // NULL if loaded not by GInjer  // NOTE: GInjer uses main thread
  SBlkDesc* BlkDesc = AddrToBlkDesc(ModDesc);
  SLdrDesc* LdrDesc = GetCurLdrDesc(BlkDesc); 
+ #else
+ void* ModDesc = nullptr;
+ #endif
  UINT   RemThFlags = (DWORD)hModule & NInjLdr::RemThModMarker;      // DLLMain has been passed to CreateRemoteThread/APC/ExistingThread (Where is only one argument available)  // Normal HMODULE would be aligned at 0x1000   
  if(RemThFlags || (ReasonCall >= DLL_REFLECTIVE_LOAD))  // NOTE: Variables get read in conditions even if these conditions is skipped   // Either an own thread or APC callback of an existing thread  // ReasonCall may be already outside of stack(Remote Thread)!
   {  
@@ -101,6 +105,7 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)  // 
      // TODO: Prevent multi-entering from different threads when APC or Hijack injection method used
      //
     }
+#ifdef _HAVE_GINGER
    if(ModDesc)
     {
      hModule = (HMODULE)NInjLdr::ReflectiveRelocateSelf(hModule, (LdrDesc)?((PVOID)LdrDesc->NtDllBase):(NULL));  // Allocate to a new buffer  // Loaded by GInjer. Current memory block will be deallocated by GInjer. Current thread is App`s main thread or GInjer`s Loader thread                      
@@ -109,6 +114,7 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)  // 
      LDRLOG("Hello from %p, %08X", hModule, ModDesc->Flags);  // LDRLOG("Hello from %p, %08X: %ls", hModule, ModDesc->Flags, &ModDesc->ModulePath);   // '%ls' will crash if called before the process initioalization (Load before loader)
 #endif
     }
+ #endif
 //     else hModule = (HMODULE)NInjLdr::PEImageInitialize(hModule);      // Relocate in current buffer (Must be large enough)       // Loaded by a Debugger plugin   // What was the reason to do self initialization here????  // It is much harded to debug the pluging when it is self relocates sections
    if(!NotReusableTh)hIpcTh = NtCurrentThread;   // Can be changed later, before Start, if needed   // A reusable injected remote thread  // Assign globals after relocation
    if(ModDesc && !NotOwnThread)MainThId = NtCurrentThreadId();    // Main thread by GInjer
@@ -116,6 +122,7 @@ BOOL APIENTRY DLLMain(HMODULE hModule, DWORD ReasonCall, LPVOID lpReserved)  // 
    ModInjFlags = InjFlg;   // Injected with
   } 
    else MainThId = NtCurrentThreadId();   // Injected from a Main Thread or loaded normally
+
  switch(ReasonCall)	    
   {			 
    case DLL_PROCESS_ATTACH:
@@ -305,7 +312,7 @@ bool _stdcall InitApplication(void)
  HookKiUserExceptionDispatcher.SetHook("KiUserExceptionDispatcher","ntdll.dll");    
  HookLdrInitializeThunk.SetHook("LdrInitializeThunk","ntdll.dll");     */
 
- Dbg = new ((void*)&ArrDbgClient) NGhDbg::CDbgClient(ThisLibBase);
+ Dbg = new ((void*)&ArrDbgClient) NGhDbg::CDbgClient(ThisLibBase);   // Just call the constructor on ArrDbgClient
  Dbg->UsrReqCallback = &DbgUsrReqCallback;
 ////////// LoadConfiguration();
  DBGMSG("IPC created: IPCSize=%u",IPCSize);

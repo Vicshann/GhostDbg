@@ -29,7 +29,7 @@ bool AllowInject = true;        // Allow to load inject DLL into a target proces
 bool AllowInjNew = true;        // Allow to load inject DLL into a target process(Create).
 bool SuspendProc = true;        // It is safer to keep a target process suspended while IPC and GhostDbg Client initializing but some timeouts may be detected
 bool SingleCore  = false;
-UINT InjFlags    = NInjLdr::mfInjMap|NInjLdr::mfRunRMTH|NInjLdr::mfRawRMTH|NInjLdr::mfNoThreadReport;
+UINT InjFlags    = NInjLdr::mfInjMap|NInjLdr::mfRunRMTH|NInjLdr::mfNoThreadReport;  // |NInjLdr::mfRawRMTH
 UINT WaitForInj  = 5000;
 //---------------------------------------
                                  
@@ -444,6 +444,7 @@ int _stdcall InjectProcess(HANDLE hProcess, DWORD ProcessID)
  PVOID InjLib = NULL;
  NSTR::StrCopy(DllPath, StartUpDir);
  NSTR::StrCnat(DllPath, L"injlib.dll");        // Store this name in some global definition?
+ plugin_logprintf("%s: Trying to inject process %u\n",XDBGPLG_NAME,ProcessID);
  HANDLE hFile = CreateFileW(DllPath,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
  if(hFile != INVALID_HANDLE_VALUE)
   {
@@ -484,6 +485,7 @@ int _stdcall InjectProcess(HANDLE hProcess, DWORD ProcessID)
    if(SHM::CMessageIPC::IsExistForID(ProcessID))break;
   }
  if(!SHM::CMessageIPC::IsExistForID(ProcessID))return -4;
+ plugin_logprintf("%s: Target process injection succeeded\n",XDBGPLG_NAME);
  return 0;
 }
 //------------------------------------------------------------------------------------
@@ -495,6 +497,7 @@ BOOL _stdcall ProcessCreateInjWrk(LPPROCESS_INFORMATION lpProcessInformation)
  HANDLE hRealThrd = lpProcessInformation->hThread;
  HANDLE hRealProc = lpProcessInformation->hProcess;
  hSuspTh = NULL;
+ plugin_logprintf("%s: Trying to inject new process %u\n",XDBGPLG_NAME,(DWORD)lpProcessInformation->dwProcessId);
  lpProcessInformation->hProcess = XNI::CDbgClient::UintToFakeHandle(lpProcessInformation->dwProcessId);      // All communication with a target process is only through IPC 
  lpProcessInformation->hThread  = XNI::CDbgClient::UintToFakeHandle(0);      // Any first thread in list!
  int ires = InjectProcess(hRealProc, lpProcessInformation->dwProcessId);
@@ -533,6 +536,7 @@ BOOL _stdcall ProcessCreateInjWrk(LPPROCESS_INFORMATION lpProcessInformation)
    else {DBGMSG("Failed to inject a new process: %08X(%u): %i",lpProcessInformation->dwProcessId,lpProcessInformation->dwProcessId,ires);}
  if(!res){TerminateProcess(hRealProc,0); CloseHandle(hRealThrd);}
  CloseHandle(hRealProc);
+ plugin_logprintf("%s: New process injection succeeded\n",XDBGPLG_NAME);
  return res;
 }
 //------------------------------------------------------------------------------------
